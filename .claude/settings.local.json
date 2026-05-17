@@ -4,7 +4,10 @@
       "Skill(speckit-git-initialize)",
       "Bash(pwsh -ExecutionPolicy Bypass -File .specify/scripts/powershell/setup-plan.ps1 -Json)",
       "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/scripts/powershell/setup-plan.ps1 -Json)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(git commit *)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/extensions/git/scripts/powershell/auto-commit.ps1 after_plan)",
+      "Bash(git add *)"
     ]
   }
 }
