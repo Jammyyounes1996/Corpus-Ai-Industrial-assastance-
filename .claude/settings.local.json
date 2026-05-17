@@ -9,7 +9,10 @@
       "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/extensions/git/scripts/powershell/auto-commit.ps1 after_plan)",
       "Bash(git add *)",
       "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly)",
-      "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/extensions/git/scripts/powershell/auto-commit.ps1 after_clarify)"
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/extensions/git/scripts/powershell/auto-commit.ps1 after_clarify)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks)",
+      "Bash(ollama list *)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/scripts/powershell/setup-tasks.ps1 -Json)"
     ]
   }
 }

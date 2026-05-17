@@ -18,22 +18,22 @@ This document consolidates research findings for unknowns identified during plan
 Verify Gemma4 works with langchain-ollama 0.2.0 on Windows.
 
 ### Research
-- Ollama supports Gemma 2 (latest Google model) via `ollama pull gemma2`
+- Ollama supports Gemma 4 (latest Google model) via `ollama pull gemma4`
 - langchain-ollama 0.2.0 supports all Ollama models through the standard chat/embedding interfaces
 - Windows support is native; Ollama runs as a service
-- Gemma2-9b-instruct is the recommended model for this use case (~5GB VRAM)
+- Gemma4-9b-instruct is available locally (confirmed via `ollama list`)
+- Vision capabilities available via `gemma4` for OCR
 
 ### Decision
-**Use `gemma2:latest` (Gemma 2 9B Instruct) instead of Gemma4.**
-- Gemma 2 is the current stable release (as of May 2025)
-- Better performance than Gemma 1/4 series
-- Smaller footprint than Gemma 2 27B
-- Vision capabilities available via `gemma2:9b-vision` for OCR
+**Use `gemma4:latest` (Gemma 4 9B Instruct).**
+- Gemma 4 is the user's installed model (9.6 GB, 3 weeks ago)
+- Local installation confirmed via `ollama list`
+- Compatible with langchain-ollama 0.2.0
+- Vision capabilities available via `gemma4` for OCR
 
 ### Sources
-- [Ollama Model Library - Gemma2](https://ollama.com/library/gemma2)
+- [Ollama Model Library - Gemma4](https://ollama.com/library/gemma4)
 - [LangChain Ollama Documentation](https://python.langchain.com/docs/integrations/platforms/ollama/)
-- [Gemma 2 Research Paper](https://storage.googleapis.com/deepmind-media/gemma/gemma-2-report.pdf)
 
 ---
 
@@ -180,7 +180,7 @@ Best practices for SQLAlchemy 2.0 async with aiosqlite.
 
 | Research Item | Decision | Impact |
 |---------------|----------|--------|
-| Ollama Model | Use `gemma2:latest` instead of Gemma4 | Update PLAN.md references |
+| Ollama Model | Use `gemma4:latest` (user's installed model) | Update PLAN.md references |
 | Qdrant Docker | Use v1.12.0 via docker-compose.yml | Standard deployment |
 | Miniconda | Standard conda workflow | README documentation |
 | FastAPI CORS | Configure CORSMiddleware for localhost:8501 | Enable frontend-backend comms |

@@ -12,7 +12,7 @@ Before starting Phase 1, ensure you have:
 
 - [ ] Python 3.11+ installed
 - [ ] Docker Desktop for Windows installed and running
-- [ ] 8GB+ VRAM (for Gemma2 model) or 16GB+ system RAM (CPU inference)
+- [ ] 8GB+ VRAM (for Gemma4 model) or 16GB+ system RAM (CPU inference)
 - [ ] ~10GB free disk space
 
 ---
