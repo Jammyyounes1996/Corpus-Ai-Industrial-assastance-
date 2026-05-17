@@ -36,7 +36,7 @@
 
 - [ ] T009 Create environment.yml with Python 3.11 and dependencies list
 - [ ] T010 Create requirements.txt with all pinned dependencies from plan.md Section 9.2
-- [ ] T011 Create .env.example with all environment variables from plan.md Section 9.4
+- [ ] T011 Create .env.example with all environment variables from plan.md Section 9.4, including: WHISPER_DEVICE=auto, WHISPER_COMPUTE_TYPE=auto, SECRET_KEY with comment "Generate with: python scripts/generate_secret_key.py", MAX_PDF_SIZE_MB=100, MAX_AUDIO_SIZE_MB=100, MAX_IMAGE_SIZE_MB=25
 - [ ] T012 Create .gitignore with Python, environment, data, and IDE patterns
 - [ ] T013 Create docker-compose.yml with Qdrant v1.12.0 service from plan.md Section 9.5
 - [ ] T014 Create README.md with project title and installation placeholder
@@ -64,14 +64,14 @@
 **Purpose**: Create all 8 SQLAlchemy models with indexes
 
 - [ ] T024 Create backend/database/models/__init__.py
-- [ ] T025 [P] Create Project model in backend/database/models.py
-- [ ] T026 [P] Create Chat model in backend/database/models.py
-- [ ] T027 [P] Create Message model in backend/database/models.py
-- [ ] T028 [P] Create File model in backend/database/models.py
-- [ ] T029 [P] Create OCRResult model in backend/database/models.py
-- [ ] T030 [P] Create Transcript model in backend/database/models.py
-- [ ] T031 [P] Create AppSettings model in backend/database/models.py
-- [ ] T032 [P] Create EvaluationResult model in backend/database/models.py
+- [ ] T025 Create Project model in backend/database/models.py
+- [ ] T026 Create Chat model in backend/database/models.py
+- [ ] T027 Create Message model in backend/database/models.py
+- [ ] T028 Create File model in backend/database/models.py
+- [ ] T029 Create OCRResult model in backend/database/models.py
+- [ ] T030 Create Transcript model in backend/database/models.py
+- [ ] T031 Create AppSettings model in backend/database/models.py
+- [ ] T032 Create EvaluationResult model in backend/database/models.py
 - [ ] T033 Add all 9 Index definitions to backend/database/models.py (from data-model.md Section "Database Indexes")
 - [ ] T034 Add foreign key constraints to backend/database/models.py
 
@@ -123,7 +123,7 @@
 
 - [ ] T054 Run `python scripts/init_db.py` and verify industrial_ai.db created
 - [ ] T055 Run `python scripts/setup_qdrant_collection.py` and verify Qdrant collection created
-- [ ] T056 Run `uvicorn backend.main:app --port 8000` in background
+- [ ] T056 Document the uvicorn command "uvicorn backend.main:app --port 8000". Run in SEPARATE terminal window manually. Do not use background processes (Windows compatibility).
 - [ ] T057 Run `curl http://localhost:8000/health` and verify returns `{"status":"ok"}`
 - [ ] T058 Run `streamlit run frontend/app.py` and verify UI loads with sidebar + tabs
 - [ ] T059 Run `python scripts/verify_environment.py` and verify all checks pass
@@ -149,7 +149,7 @@ Within each phase, tasks marked [P] can be executed in parallel:
 
 - **Phase 1**: T002-T008 can run in parallel (different directories)
 - **Phase 2**: T010-T014 can run in parallel (different config files)
-- **Phase 4**: T025-T032 can run in parallel (different models in same file - complete sequentially to avoid conflicts)
+- **Phase 4**: T025-T032 must be completed sequentially (same file)
 - **Phase 6**: T045-T046 can run in parallel (different CSS files)
 - **Phase 7**: T050-T053 can run in parallel (different scripts)
 - **Phase 8**: All validation tests can run in parallel
