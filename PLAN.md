@@ -646,6 +646,30 @@ Industrial engineer with one or more of:
 - **Cards:** subtle shadow lift (200ms)
 - **Sidebar items:** background fade-in (150ms)
 
+#### 4.11.6 Reduced Motion Accessibility
+All animations must respect the user's OS-level motion preferences.
+
+**CSS implementation** (in `frontend/styles/main.css`):
+```css
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+```
+
+**Applies to:**
+- Starburst icon rotation/breathing
+- Thinking step fade-in transitions
+- Tab underline slide
+- Streaming cursor blink
+- Hover scale effects
+- Modal open/close transitions
+
+**Note:** No Settings toggle needed — the OS preference is the source of truth.
+
 ---
 
 ## 5. Backend Specifications
@@ -882,6 +906,34 @@ class EvaluationResult(Base):
     created_at: datetime
 ```
 
+### 6.1.2 Database Indexes
+
+All indexes are created via SQLAlchemy `Index` definitions:
+
+```python
+# Chat indexes
+Index("idx_chats_updated_at", Chat.updated_at.desc())
+Index("idx_chats_project_id", Chat.project_id)
+
+# Message indexes
+Index("idx_messages_chat_id_created", Message.chat_id, Message.created_at)
+
+# File indexes
+Index("idx_files_type", File.file_type)
+Index("idx_files_created_at", File.created_at.desc())
+Index("idx_files_status", File.indexing_status)
+
+# OCR indexes
+Index("idx_ocr_file_id", OCRResult.file_id)
+
+# Transcript indexes
+Index("idx_transcripts_file_id", Transcript.file_id)
+
+# Evaluation indexes
+Index("idx_eval_chat_id", EvaluationResult.chat_id)
+Index("idx_eval_message_id", EvaluationResult.message_id)
+```
+
 ### 6.2 Qdrant Collections
 
 **Collection name:** `industrial_assistant`
@@ -1010,6 +1062,34 @@ Plus: POST /api/projects/{id}/chats — move chat to project
 
 #### POST /api/settings/test-connection
 **Returns:** `{"status": "connected" | "failed", "details": "..."}`
+
+### 7.7 File Upload Constraints
+
+All file uploads are validated at the FastAPI boundary using `UploadFile` with explicit size and MIME type checks.
+
+| File Type | Max Size | Allowed MIME Types |
+|-----------|----------|---------------------|
+| PDF | 100 MB | `application/pdf` |
+| Audio | 100 MB | `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg` |
+| Image | 25 MB | `image/jpeg`, `image/png`, `image/webp` |
+
+**Validation behavior:**
+- Size exceeded: HTTP 413 Payload Too Large with error message
+- Invalid MIME type: HTTP 415 Unsupported Media Type with error message
+- Filename sanitized: No path traversal, max 255 characters
+
+**Example error response:**
+```json
+{
+  "error": "ValidationError",
+  "message": "File size (150 MB) exceeds maximum allowed size (100 MB) for PDF files",
+  "details": {
+    "file_type": "pdf",
+    "max_size_mb": 100,
+    "actual_size_mb": 150
+  }
+}
+```
 
 ---
 
@@ -1144,6 +1224,7 @@ industrial-ai-assistant/
 ├── scripts/
 │   ├── init_db.py                       # Initialize SQLite + Alembic
 │   ├── setup_qdrant_collection.py      # Create Qdrant collection
+│   ├── generate_secret_key.py          # Generate Fernet key for .env
 │   └── verify_environment.py            # Pre-flight checks
 │
 ├── docker-compose.yml                   # Qdrant + (optional) backend
@@ -1275,14 +1356,33 @@ DATABASE_URL=sqlite+aiosqlite:///./industrial_ai.db
 # Encryption (for API keys at rest)
 SECRET_KEY=generate-with-fernet
 
+## Generating SECRET_KEY
+
+Before first run, generate a Fernet-compatible encryption key:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Copy the output and set it as `SECRET_KEY` in your `.env` file.
+
+Alternatively, run the helper script (created in Phase 1):
+```bash
+python scripts/generate_secret_key.py
+```
+
+**IMPORTANT:** Do NOT use `openssl rand -base64 32` — it produces standard base64 with `+` and `/` characters, but Fernet requires URL-safe base64 (`-` and `_`). The key would fail validation at runtime.
+
+**WARNING:** Do NOT auto-generate the key on first run — if `.env` is ever lost or recreated, all encrypted API keys stored in SQLite become unrecoverable.
+
 # Optional external LLMs
 GEMINI_API_KEY=
 GROK_API_KEY=
 
 # Whisper
 WHISPER_MODEL_SIZE=base
-WHISPER_DEVICE=cuda  # or cpu
-WHISPER_COMPUTE_TYPE=float16  # or int8 for cpu
+WHISPER_DEVICE=auto       # auto | cuda | cpu
+WHISPER_COMPUTE_TYPE=auto # auto | float16 | int8
 ```
 
 ### 9.5 docker-compose.yml
@@ -1338,6 +1438,7 @@ services:
 - `requirements.txt`
 - `.env.example`
 - `scripts/init_db.py`
+- `scripts/generate_secret_key.py`
 - `scripts/verify_environment.py`
 
 ### Phase 2 — Ingestion Pipeline (Day 2)
@@ -1369,6 +1470,44 @@ services:
 - `backend/api/routes/ingest.py`
 - `backend/database/crud.py` (CRUD for File, Transcript, OCRResult)
 - `backend/schemas/ingest.py`
+
+**Audio Transcription Device Detection:**
+
+The `audio_ingestor.py` module includes device auto-detection with graceful fallback:
+
+```python
+from loguru import logger
+from backend.config.settings import settings
+
+def get_whisper_device() -> tuple[str, str]:
+    """Detect available device with safe fallback to CPU.
+
+    Returns:
+        Tuple of (device, compute_type) suitable for faster-whisper.
+    """
+    if settings.WHISPER_DEVICE != "auto":
+        return (settings.WHISPER_DEVICE, settings.WHISPER_COMPUTE_TYPE)
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            logger.info("CUDA detected — using GPU for Whisper transcription")
+            return ("cuda", "float16")
+    except ImportError:
+        pass
+
+    logger.warning(
+        "GPU not available — falling back to CPU. "
+        "Transcription will be approximately 10x slower than GPU."
+    )
+    return ("cpu", "int8")
+```
+
+**Behavior:**
+- Default `WHISPER_DEVICE=auto` enables auto-detection
+- Explicit setting (`cuda`/`cpu`) overrides auto-detection
+- CPU mode uses `int8` quantization for better speed
+- Clear log line informs user which mode is active
 
 ### Phase 3 — LangGraph Agent (Day 3)
 
@@ -1498,7 +1637,9 @@ services:
 - [ ] RAGAS evaluation runs successfully on real chats
 - [ ] All animations smooth (no jank)
 - [ ] Error states handled gracefully (Ollama down, GroundX timeout, etc.)
-- [ ] README.md complete with install + usage
+- [ ] README.md complete with install + usage, including troubleshooting for:
+  - GPU detection (check logs for "CUDA detected — using GPU")
+  - Slow audio transcription (falls back to CPU if GPU unavailable)
 - [ ] Sample data folder with demo files
 - [ ] Loom-style demo script written
 

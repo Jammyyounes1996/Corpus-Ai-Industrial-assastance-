@@ -315,6 +315,36 @@ GET /health
 
 ---
 
+### 4.5 File Upload Constraints
+
+All file uploads are validated at the FastAPI boundary.
+
+| File Type | Max Size | Allowed MIME Types |
+|-----------|----------|---------------------|
+| PDF | 100 MB | `application/pdf` |
+| Audio | 100 MB | `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg` |
+| Image | 25 MB | `image/jpeg`, `image/png`, `image/webp` |
+
+**Validation behavior:**
+- Size exceeded: HTTP 413 Payload Too Large
+- Invalid MIME type: HTTP 415 Unsupported Media Type
+- Filename sanitization: No path traversal, max 255 characters
+
+**Error Response Format (413/415):**
+```json
+{
+  "error": "ValidationError",
+  "message": "File size (150 MB) exceeds maximum allowed size (100 MB) for PDF files",
+  "details": {
+    "file_type": "pdf",
+    "max_size_mb": 100,
+    "actual_size_mb": 150
+  }
+}
+```
+
+---
+
 ### 5. Ingestion
 
 #### POST /api/ingest/pdf

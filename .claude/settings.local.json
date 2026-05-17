@@ -7,7 +7,9 @@
       "Bash(git checkout *)",
       "Bash(git commit *)",
       "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/extensions/git/scripts/powershell/auto-commit.ps1 after_plan)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/extensions/git/scripts/powershell/auto-commit.ps1 after_clarify)"
     ]
   }
 }

@@ -79,7 +79,20 @@ cp .env.example .env
 # Edit .env with your preferred editor
 ```
 
-No changes needed for Phase 1 (defaults work).
+**IMPORTANT**: Before first run, generate the SECRET_KEY:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Or run the helper script:
+```bash
+python scripts/generate_secret_key.py
+```
+
+Copy the output and set it as `SECRET_KEY` in your `.env` file.
+
+**Note**: For Phase 1 defaults work (SECRET_KEY can be placeholder for testing).
 
 ---
 
@@ -182,6 +195,25 @@ taskkill /PID <PID> /F
 # Check Ollama is in system tray or run:
 ollama serve
 ```
+
+---
+
+### Audio transcription is slow
+
+**Symptom**: Audio files take very long to transcribe (several minutes for 1-minute audio).
+
+**Fix**: Check backend logs for GPU detection:
+
+```
+INFO:CUDA detected — using GPU for Whisper transcription
+```
+
+If you see "GPU not available — falling back to CPU", verify:
+1. NVIDIA GPU is present
+2. CUDA toolkit is installed
+3. PyTorch is installed with CUDA support
+
+For systems without GPU, use shorter audio files or accept slower CPU transcription (approximately 10x slower).
 
 ---
 

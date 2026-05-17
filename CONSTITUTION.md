@@ -410,8 +410,11 @@ The `README.md` is the front door. It must contain, in order:
 ### §14.1 Input Validation
 
 - **Validate everything at the API boundary** with Pydantic.
-- **File upload limits:** 100 MB per file. Reject unknown MIME types.
-- **Sanitize filenames** before saving (no path traversal).
+- **File upload limits** (enforced at FastAPI boundary, HTTP 413 on violation):
+  - PDF: max 100 MB, MIME type `application/pdf` only
+  - Audio: max 100 MB, MIME types: `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg`
+  - Image: max 25 MB, MIME types: `image/jpeg`, `image/png`, `image/webp`
+- **Sanitize filenames** before saving (no path traversal, max 255 characters).
 
 ### §14.2 SQL Safety
 

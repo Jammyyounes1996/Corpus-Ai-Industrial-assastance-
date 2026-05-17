@@ -190,6 +190,7 @@ industrial-ai-assistant/
 ├── scripts/
 │   ├── init_db.py                       # Initialize SQLite + Alembic (PHASE 1)
 │   ├── setup_qdrant_collection.py      # Create Qdrant collection (PHASE 1)
+│   ├── generate_secret_key.py          # Generate Fernet key for .env (PHASE 1)
 │   └── verify_environment.py            # Pre-flight checks (PHASE 1)
 │
 ├── docker-compose.yml                   # Qdrant container (PHASE 1)

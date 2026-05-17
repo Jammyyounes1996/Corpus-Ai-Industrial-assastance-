@@ -245,6 +245,47 @@ pending → processing → indexed
 
 ---
 
+## Database Indexes
+
+All indexes are created via SQLAlchemy `Index` definitions in `backend/database/models.py`:
+
+```python
+from sqlalchemy import Index
+
+# Chat indexes
+Index("idx_chats_updated_at", Chat.updated_at.desc())
+Index("idx_chats_project_id", Chat.project_id)
+
+# Message indexes
+Index("idx_messages_chat_id_created", Message.chat_id, Message.created_at)
+
+# File indexes
+Index("idx_files_type", File.file_type)
+Index("idx_files_created_at", File.created_at.desc())
+Index("idx_files_status", File.indexing_status)
+
+# OCR indexes
+Index("idx_ocr_file_id", OCRResult.file_id)
+
+# Transcript indexes
+Index("idx_transcripts_file_id", Transcript.file_id)
+
+# Evaluation indexes
+Index("idx_eval_chat_id", EvaluationResult.chat_id)
+Index("idx_eval_message_id", EvaluationResult.message_id)
+```
+
+**Rationale**: These indexes support common query patterns:
+- `idx_chats_updated_at` → sidebar chat list (most recent first)
+- `idx_chats_project_id` → filter chats within a project
+- `idx_messages_chat_id_created` → chronological message retrieval
+- `idx_files_type` → filter documents tab by file type
+- `idx_files_created_at` → sort files by upload date
+- `idx_files_status` → find files needing indexing
+- Remaining indexes → 1:1 relationship lookups
+
+---
+
 ## Validation Rules Summary
 
 ### File Type Enum
