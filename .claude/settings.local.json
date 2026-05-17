@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(speckit-git-initialize)",
+      "Bash(pwsh -ExecutionPolicy Bypass -File .specify/scripts/powershell/setup-plan.ps1 -Json)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File .specify/scripts/powershell/setup-plan.ps1 -Json)",
+      "Bash(git checkout *)"
+    ]
+  }
+}
