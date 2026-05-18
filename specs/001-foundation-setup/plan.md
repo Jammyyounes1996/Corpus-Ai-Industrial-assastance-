@@ -11,7 +11,7 @@ The primary deliverable is a working development environment where `curl http://
 
 ## Technical Context
 
-**Language/Version**: Python 3.11
+**Language/Version**: Python 3.12
 **Primary Dependencies**: FastAPI 0.115, Streamlit 1.40, LangGraph 0.2, SQLAlchemy 2.0, Pydantic 2.9
 **Storage**: SQLite (via aiosqlite) for relational data, Qdrant (Docker) for vector search, disk storage for uploaded files
 **Testing**: pytest with pytest-asyncio
