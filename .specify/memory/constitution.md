@@ -273,6 +273,14 @@ A library may be added only if it meets all of:
 - **No network calls** in unit tests. Mock external services.
 - **Test data** lives in `tests/fixtures/`. Never in test files.
 
+### §9.4 Experimental Phases Exception
+
+- **Experimental and graduation project phases** may designate tests as OPTIONAL when explicitly marked in the associated `tasks.md` file.
+- **Condition for exception:** All functional requirements (FR-###) in the feature specification must have full task coverage.
+- **Documentation requirement:** The `tasks.md` header must explicitly state "Tests are OPTIONAL for this feature" to invoke this exception.
+- **Rationale:** Early-phase infrastructure development and proof-of-concept work may focus on getting core functionality operational before adding comprehensive test coverage.
+- **Post-expectation:** Once the feature is proven functional and merged to `main`, subsequent iterations must return to meeting the 70% coverage mandate before release.
+
 ---
 
 ## Article X — Frontend Standards (Streamlit)

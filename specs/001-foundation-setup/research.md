@@ -25,7 +25,7 @@ Verify Gemma4 works with langchain-ollama 0.2.0 on Windows.
 - Vision capabilities available via `gemma4` for OCR
 
 ### Decision
-**Use `gemma4:latest` (Gemma 4 9B Instruct).**
+**Use `gemma4:latest` (Gemma 4 4B Instruct).**
 - Gemma 4 is the user's installed model (9.6 GB, 3 weeks ago)
 - Local installation confirmed via `ollama list`
 - Compatible with langchain-ollama 0.2.0
