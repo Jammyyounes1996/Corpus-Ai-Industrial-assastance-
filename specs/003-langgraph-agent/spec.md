@@ -5,7 +5,7 @@
 **Status**: Draft
 **Input**: User description: "read PLAN.md file and creat a specification for the phase 3 LangGraph Agent"
 
-## Clarifications
+## Assumptions
 
 ### Session 2026-05-20
 
@@ -19,6 +19,10 @@
   → A: Best-effort approach: show whatever streamed before disconnect; partial messages are persisted
 - Q: What categories of content should be blocked for harmful queries, and what specific message should be displayed?
   → A: Use LLM's built-in safety guardrails; accept its determinations without additional filtering. The system displays whatever refusal message the model generates.
+
+### General
+
+- Phase 2 (Ingestion Pipeline) is complete, providing functional PDF ingestion, audio transcription, and image OCR with content stored in GroundX, Qdrant, and SQLite.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -78,7 +82,7 @@ Users receive answers with clear source citations, enabling them to verify infor
 
 **Why this priority**: Industrial applications require high trust. Engineers need to verify that AI answers are grounded in actual documentation, not hallucinations.
 
-**Independent Test**: A user asks a question about pump specifications. The answer includes a "Sources" section with clickable chips showing "pump_manual.pdf [pages 12-14]" and other relevant files. Clicking a source opens the document to the relevant section.
+**Independent Test**: A user asks a question about pump specifications. The answer includes a "Source" section with clickable chips showing "pump_manual.pdf [pages 12-14]" and other relevant files. Clicking a source opens the document to the relevant section.
 
 **Acceptance Scenarios**:
 
@@ -103,26 +107,23 @@ Users receive answers with clear source citations, enabling them to verify infor
 
 ### Functional Requirements
 
-- **FR-001**: System MUST analyze user queries to determine intent (PDF-only, audio-only, image-only, or hybrid).
-- **FR-002**: System MUST retrieve relevant content from GroundX for PDF documents based on query analysis.
-- **FR-003**: System MUST perform hybrid search over Qdrant vector store for audio transcripts and PDF chunks.
-- **FR-004**: System MUST perform OCR on attached images using Gemma4 vision model.
+- **FR-001**: System MUST detect query scope via prefix matching (@pdf, @image, @audio, or no prefix for hybrid).
+- **FR-002**: System MUST retrieve relevant content from GroundX for PDF documents when query starts with @pdf or has no prefix (hybrid mode).
+- **FR-003**: System MUST perform hybrid search over Qdrant vector store for audio transcripts and PDF chunks when query starts with @audio or has no prefix (hybrid mode).
+- **FR-004**: System MUST perform OCR on attached images using Gemma4 vision model when query starts with @image or has no prefix (hybrid mode) and image files are attached.
 - **FR-005**: System MUST synthesize retrieved context from multiple sources (PDFs, audio, images) into a unified context.
-- **FR-006**: System MUST generate answers using the configured LLM (Gemma4 by default, with alternatives for Gemini/Grok).
+- **FR-006**: System MUST generate and stream answers using the configured LLM (Gemma4 by default, with alternatives for Gemini/Grok) via Server-Sent Events (SSE), with tokens appearing progressively as they are produced, maintaining conversation history across multiple message turns including all previous messages and retrieved context.
 - **FR-007**: System MUST stream thinking steps via Server-Sent Events (SSE) as each node in the agent graph executes.
-- **FR-008**: System MUST stream generated answer tokens via SSE as they are produced by the LLM.
-- **FR-009**: System MUST maintain conversation history across multiple message turns, including all previous messages and retrieved context.
-- **FR-010**: System MUST persist chat sessions and messages to SQLite database for recovery and history.
-- **FR-011**: System MUST provide source citations for all retrieved content used in generating answers.
-- **FR-012**: System MUST handle multi-file queries where relevant information exists across PDFs, audio transcripts, and OCR results.
-- **FR-013**: System MUST route queries based on detected intent (router node determines which retrieval paths to follow).
-- **FR-014**: System MUST support streaming responses where tokens appear progressively as they are generated.
-- **FR-015**: System MUST emit a final "done" event to signal SSE stream completion to clients.
-- **FR-016**: System MUST validate chat session IDs and create new sessions when null or invalid IDs are provided.
-- **FR-017**: System MUST support attaching files to queries for context-specific retrieval.
-- **FR-018**: System MUST handle cases where no relevant information is found and provide helpful guidance to users.
-- **FR-019**: System MUST gracefully handle failures in external services (GroundX, Qdrant, Ollama) using 15-second timeout per call with 2 retries with exponential backoff (total 60s max), and report errors in thinking steps.
-- **FR-020**: System MUST support conversation context limits with summarization of older turns when needed. Maximum 50 turns before summarization triggers, summarizing 20 oldest turns to 2 sentence overview per turn.
+- **FR-008**: System MUST persist chat sessions and messages to SQLite database for recovery and history.
+- **FR-009**: System MUST provide source citations for all retrieved content used in generating answers.
+- **FR-010**: System MUST handle multi-file queries where relevant information exists across PDFs, audio transcripts, and OCR results.
+- **FR-011**: System MUST route queries based on message prefix detection (@pdf for PDF-only, @image for image-only, @audio for audio-only, or no prefix for hybrid search across all sources).
+- **FR-012**: System MUST emit a final "done" event to signal SSE stream completion to clients.
+- **FR-013**: System MUST validate chat session IDs and create new sessions when null or invalid IDs are provided.
+- **FR-014**: System MUST support attaching files to queries for context-specific retrieval.
+- **FR-015**: System MUST handle cases where no relevant information is found and provide helpful guidance to users.
+- **FR-016**: System MUST gracefully handle failures in external services (GroundX, Qdrant, Ollama) using 15-second timeout per call with 2 retries with exponential backoff (total 60s max), and report errors in thinking steps.
+- **FR-017**: System MUST support conversation context limits with summarization of older turns when needed. Maximum 50 turns before summarization triggers, summarizing 20 oldest turns to 2 sentence overview per turn.
 
 ### Key Entities
 
@@ -143,12 +144,27 @@ Users receive answers with clear source citations, enabling them to verify infor
 - **SC-004**: Multi-turn conversations correctly maintain context across at least 10 consecutive message exchanges.
 - **SC-005**: Source citations include accurate chunk references with similarity scores for 90% of cited sources. Citations are ordered by similarity score, with duplicate chunks from same file merged into single citation.
 - **SC-006**: The system handles queries over empty knowledge base gracefully within 2 seconds (no timeout).
-- **SC-007**: Streaming token latency averages less than 200ms between tokens during answer generation.
+- **SC-007**: Streaming token latency averages less than 200ms between tokens during answer generation (FR-006).
 - **SC-008**: 90% of users report that thinking steps help them understand how the system reached its answer (measured via feedback).
 - **SC-009**: Cross-source queries (combining PDF, audio, and image information) successfully synthesize information in at least 80% of test cases.
 - **SC-010**: Failed retrieval nodes report clear error messages in thinking steps without causing system crashes.
 
 ## Assumptions
+
+### Session 2026-05-20
+
+- Q: What timeout duration should be used for external service calls, and how many retries should be attempted before declaring failure?
+  → A: 15 second timeout, 2 retries with exponential backoff (total 60s max)
+- Q: What is the maximum number of conversation turns before summarization is triggered, and how should older messages be summarized?
+  → A: 50 turns max, summarize to 2 sentence overview per 20 older turns
+- Q: When multiple sources contain similar or duplicate information, how should citations be presented and ordered?
+  → A: Order by similarity score, but merge duplicates from same file into single citation
+- Q: How should the system handle incomplete responses when the SSE stream is interrupted by the user (page close, disconnect)?
+  → A: Best-effort approach: show whatever streamed before disconnect; partial messages are persisted
+- Q: What categories of content should be blocked for harmful queries, and what specific message should be displayed?
+  → A: Use LLM's built-in safety guardrails; accept its determinations without additional filtering. The system displays whatever refusal message the model generates.
+
+### General
 
 - Phase 2 (Ingestion Pipeline) is complete, providing functional PDF ingestion, audio transcription, and image OCR with content stored in GroundX, Qdrant, and SQLite.
 - Ollama server is running with Gemma4 model available for generation.
