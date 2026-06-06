@@ -112,7 +112,7 @@ An industrial engineer manages their knowledge base by viewing uploaded files, d
 #### Audio Ingestion Requirements
 
 - **FR-010**: System MUST accept audio files up to 100 MB in size
-- **FR-011**: System MUST accept audio files with MIME types: audio/mpeg, audio/wav, audio/m4a, audio/ogg
+- **FR-011**: System MUST accept audio files with MIME types: audio/mpeg, audio/wav, audio/m4a, audio/ogg, audio/mp4
 - **FR-012**: System MUST save uploaded audio files to a dedicated audio directory with a unique identifier
 - **FR-013**: System MUST transcribe audio files using the configured transcriber model
 - **FR-014**: System MUST detect available GPU and use it for transcription when available

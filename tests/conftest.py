@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import anyio
 import pytest
 import pytest_asyncio
+from sse_starlette.sse import AppStatus
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from backend.database.database import Base
@@ -23,6 +25,18 @@ TestingAsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_sse_app_status():
+    """Reset sse_starlette AppStatus event loop binding before each test."""
+    AppStatus.should_exit_event = anyio.Event()
+    yield
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    return asyncio.DefaultEventLoopPolicy()
 
 
 @pytest_asyncio.fixture(autouse=True)

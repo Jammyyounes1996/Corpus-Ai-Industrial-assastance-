@@ -7,7 +7,7 @@ import httpx
 class APIClient:
     """HTTP client for communicating with the FastAPI backend."""
 
-    base_url: str = "http://localhost:8000"
+    base_url: str = "http://localhost:8001"
 
     async def get(self, path: str, params: dict | None = None) -> dict:
         """Send a GET request to the backend.

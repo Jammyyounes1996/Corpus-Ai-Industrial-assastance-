@@ -1,10 +1,14 @@
 import uuid
+import json
 from datetime import datetime
 
 from sqlalchemy import delete, func, select
+from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from loguru import logger
 
-from backend.database.models import File, OCRResult, Transcript
+from backend.database.models import Chat, File, Message, OCRResult, Transcript, EvaluationResult
 
 
 async def create_file(
@@ -44,7 +48,14 @@ async def create_file(
 
 async def get_file(session: AsyncSession, file_id: str) -> File | None:
     """Get a file by its ID."""
-    result = await session.execute(select(File).where(File.id == file_id))
+    result = await session.execute(
+        select(File)
+        .options(
+            selectinload(File.transcript),
+            selectinload(File.ocr_result),
+        )
+        .where(File.id == file_id)
+    )
     return result.scalar_one_or_none()
 
 
@@ -61,7 +72,10 @@ async def get_files(
     Returns:
         A tuple of (list of files, total count).
     """
-    query = select(File)
+    query = select(File).options(
+        selectinload(File.transcript),
+        selectinload(File.ocr_result),
+    )
     count_query = select(func.count()).select_from(File)
 
     if file_type != "all":
@@ -78,7 +92,7 @@ async def get_files(
     query = query.limit(limit).offset(offset)
 
     result = await session.execute(query)
-    files = list(result.scalars().all())
+    files = list(result.scalars().unique().all())
 
     count_result = await session.execute(count_query)
     total = count_result.scalar() or 0
@@ -181,5 +195,271 @@ async def get_ocr_result_by_file_id(
     """Get the OCR result for a specific file."""
     result = await session.execute(
         select(OCRResult).where(OCRResult.file_id == file_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_files_by_ids(session: AsyncSession, file_ids: list[str]) -> list[File]:
+    """Get files by a list of IDs using a single query."""
+    if not file_ids:
+        return []
+
+    result = await session.execute(
+        select(File)
+        .options(
+            selectinload(File.transcript),
+            selectinload(File.ocr_result),
+        )
+        .where(File.id.in_(file_ids))
+    )
+    return list(result.scalars().unique().all())
+
+
+async def create_chat(
+    session: AsyncSession,
+    *,
+    title: str,
+    model_provider: str,
+    model_name: str,
+) -> Chat:
+    """Create a new chat record."""
+    logger.info(f"Creating chat with title: {title[:50]}")
+    chat = Chat(
+        title=title,
+        model_provider=model_provider,
+        model_name=model_name,
+    )
+    session.add(chat)
+    await session.flush()
+    return chat
+
+
+async def get_chat(session: AsyncSession, chat_id: str) -> Chat | None:
+    """Get a chat by its ID."""
+    logger.info(f"Retrieving chat: {chat_id}")
+    result = await session.execute(
+        select(Chat)
+        .options(selectinload(Chat.messages))
+        .where(Chat.id == chat_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_chats(
+    session: AsyncSession,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[Chat]:
+    """List chats ordered by most recently updated."""
+    result = await session.execute(
+        select(Chat)
+        .order_by(Chat.updated_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    return list(result.scalars().all())
+
+
+async def _count_chat_messages(session: AsyncSession, chat_id: str) -> int:
+    """Count messages for a chat."""
+    result = await session.execute(
+        select(func.count()).select_from(Message).where(Message.chat_id == chat_id)
+    )
+    return int(result.scalar() or 0)
+
+
+async def delete_chat(session: AsyncSession, chat_id: str) -> bool:
+    """Delete a chat by ID."""
+    logger.info(f"Deleting chat: {chat_id}")
+    chat = await get_chat(session, chat_id)
+    if chat is None:
+        return False
+
+    await session.delete(chat)
+    await session.flush()
+    return True
+
+
+async def create_message(
+    session: AsyncSession,
+    *,
+    chat_id: str,
+    role: str,
+    content: str,
+    thinking_steps: str | None = None,
+    retrieved_context: str | None = None,
+    attached_files: list[str] | None = None,
+) -> Message:
+    """Create a new message in a chat."""
+    attached_files = json.dumps(attached_files or [])
+    message = Message(
+        chat_id=chat_id,
+        role=role,
+        content=content,
+        thinking_steps=thinking_steps,
+        retrieved_context=retrieved_context,
+        attached_files=attached_files,
+    )
+    session.add(message)
+    await session.flush()
+    await session.refresh(message)
+    return message
+
+
+async def get_messages(
+    session: AsyncSession,
+    *,
+    chat_id: str,
+    limit: int = 100,
+) -> list[Message]:
+    """Get chat messages ordered by creation time."""
+    return await get_chat_messages(session, chat_id=chat_id, limit=limit)
+
+
+async def get_chat_messages(
+    session: AsyncSession,
+    *,
+    chat_id: str,
+    limit: int = 100,
+) -> list[Message]:
+    """Get chat messages ordered by creation time with pagination limit."""
+    result = await session.execute(
+        select(Message)
+        .where(Message.chat_id == chat_id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def update_message_content(
+    session: AsyncSession,
+    message_id: str,
+    *,
+    content: str,
+    thinking_steps: str | None = None,
+    retrieved_context: str | None = None,
+) -> Message | None:
+    """Update an existing message content."""
+    result = await session.execute(
+        select(Message).where(Message.id == message_id)
+    )
+    message = result.scalar_one_or_none()
+    if message is None:
+        return None
+
+    message.content = content
+    if thinking_steps is not None:
+        message.thinking_steps = thinking_steps
+    if retrieved_context is not None:
+        message.retrieved_context = retrieved_context
+    await session.commit()
+    await session.refresh(message)
+    return message
+
+
+async def summarize_old_messages(
+    session: AsyncSession,
+    chat_id: str,
+    llm,
+    summarize_count: int = 40,
+) -> bool:
+    """
+    Summarizes the oldest `summarize_count` messages in a chat.
+    Deletes them and inserts one summary Message in their place.
+    Returns True if summarization was performed, False if skipped.
+    """
+    result = await session.execute(
+        select(Message)
+        .where(Message.chat_id == chat_id)
+        .order_by(Message.created_at.asc())
+        .limit(summarize_count)
+    )
+    old_messages = result.scalars().all()
+
+    if len(old_messages) < summarize_count:
+        return False
+
+    old_ids = [m.id for m in old_messages]
+
+    conversation_text = "\n".join(f"{m.role}: {m.content}" for m in old_messages)
+
+    summary_response = await llm.ainvoke(
+        f"Summarize this technical conversation concisely, "
+        f"preserving key facts, decisions, and context:\n\n"
+        f"{conversation_text}"
+    )
+    summary_text = summary_response.content
+
+    await session.execute(sa_delete(Message).where(Message.id.in_(old_ids)))
+
+    summary_message = Message(
+        chat_id=chat_id,
+        role="system",
+        content=f"[CONVERSATION SUMMARY]: {summary_text}",
+        thinking_steps=None,
+        retrieved_context=None,
+        attached_files=None,
+    )
+    session.add(summary_message)
+    await session.commit()
+
+    return True
+
+
+async def create_evaluation(
+    session: AsyncSession,
+    *,
+    chat_id: str,
+    message_id: int,
+    faithfulness: float | None = None,
+    answer_relevancy: float | None = None,
+    model_used: str | None = None,
+) -> EvaluationResult:
+    eval_result = EvaluationResult(
+        chat_id=chat_id,
+        message_id=message_id,
+        faithfulness=faithfulness,
+        answer_relevancy=answer_relevancy,
+        model_used=model_used,
+    )
+    session.add(eval_result)
+    await session.flush()
+    await session.refresh(eval_result)
+    return eval_result
+
+
+async def get_evaluations(
+    session: AsyncSession,
+    *,
+    chat_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[EvaluationResult], int]:
+    query = select(EvaluationResult)
+    count_query = select(func.count()).select_from(EvaluationResult)
+
+    if chat_id:
+        query = query.where(EvaluationResult.chat_id == chat_id)
+        count_query = count_query.where(EvaluationResult.chat_id == chat_id)
+
+    query = query.order_by(EvaluationResult.created_at.desc()).limit(limit).offset(offset)
+
+    result = await session.execute(query)
+    evaluations = list(result.scalars().all())
+
+    count_result = await session.execute(count_query)
+    total = count_result.scalar() or 0
+
+    return evaluations, total
+
+
+async def get_evaluation_by_message(
+    session: AsyncSession,
+    message_id: int,
+) -> EvaluationResult | None:
+    result = await session.execute(
+        select(EvaluationResult).where(EvaluationResult.message_id == message_id)
     )
     return result.scalar_one_or_none()

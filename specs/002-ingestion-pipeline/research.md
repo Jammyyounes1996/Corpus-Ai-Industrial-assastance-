@@ -179,7 +179,7 @@ def validate_file_type(file_path: str, allowed_types: list[str]) -> bool:
 
 **Allowed MIME types**:
 - PDF: `application/pdf`
-- Audio: `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg`
+- Audio: `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg`, `audio/mp4`
 - Image: `image/jpeg`, `image/png`, `image/webp`
 
 ---

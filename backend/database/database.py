@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -21,6 +22,7 @@ engine = create_async_engine(
     _settings.DATABASE_URL,
     echo=_settings.DEBUG,
     future=True,
+    connect_args={"timeout": 30, "check_same_thread": False},
 )
 
 async_session_maker = async_sessionmaker(
@@ -28,6 +30,16 @@ async_session_maker = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+
+async def configure_sqlite_pragmas() -> None:
+    """Configure SQLite PRAGMA settings for better concurrency."""
+    if not _settings.DATABASE_URL.startswith("sqlite"):
+        return
+
+    async with engine.connect() as conn:
+        await conn.execute(text("PRAGMA journal_mode=WAL"))
+        await conn.execute(text("PRAGMA synchronous=NORMAL"))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

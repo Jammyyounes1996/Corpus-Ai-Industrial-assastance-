@@ -1,0 +1,8 @@
+/* Index CSS - Simple aggregator for styles */
+/* 
+  This file can be used as a simple aggregator if needed.
+  Main styles are imported directly in main.tsx:
+  - ./styles/tokens.css
+  - ./styles/global.css  
+  - ./styles/motion.css
+*/

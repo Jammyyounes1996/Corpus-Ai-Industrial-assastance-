@@ -3,15 +3,17 @@ from collections.abc import AsyncGenerator
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 from sqlalchemy import text
-
+from backend.api.routes.search import router as search_router
 from backend.api.routes.files import router as files_router
 from backend.api.routes.ingest import router as ingest_router
+from backend.api.routes.chat import configure_chat_cors, router as chat_router
+from backend.api.routes.models import router as models_router
+from backend.api.routes.evaluation import router as evaluation_router
 from backend.config.settings import get_settings
-from backend.database.database import engine, Base
+from backend.database.database import Base, configure_sqlite_pragmas, engine
 from backend.schemas.health import HealthResponse
 from backend.utils.logging import configure_logging
 
@@ -22,9 +24,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging()
     logger.info("Starting {}", get_settings().APP_NAME)
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables verified")
+    settings = get_settings()
+    await configure_sqlite_pragmas()
+
+    if settings.DEBUG:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables created (DEBUG mode — use Alembic in production)")
+    else:
+        logger.info("Database migrations managed by Alembic")
+
+    from backend.core.retrieval.qdrant_client import qdrant_retriever
+    try:
+        qdrant_retriever.ensure_collection()
+        logger.info("Qdrant collection verified")
+    except Exception as exc:
+        logger.warning("Qdrant collection verification failed: {}", exc)
 
     yield
 
@@ -39,30 +54,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-settings = get_settings()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+configure_chat_cors(app)
 
 
-app.include_router(ingest_router)
+app.include_router(search_router)
 app.include_router(files_router)
+app.include_router(ingest_router)
+app.include_router(chat_router)
+app.include_router(models_router)
+app.include_router(evaluation_router)
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle unhandled exceptions with a structured response."""
-    logger.error("Unhandled exception: {} - {}", type(exc).__name__, str(exc))
+    logger.exception("Unhandled exception: {} - {}", type(exc).__name__, str(exc))
     return JSONResponse(
         status_code=500,
         content={
             "error": type(exc).__name__,
-            "message": "An internal error occurred",
+            "message": str(exc),
         },
     )
 
@@ -73,7 +84,7 @@ async def health_check() -> HealthResponse:
 
     Always returns HTTP 200 with appropriate status field:
     - "ok": All services operational
-    - "degraded": Some services unavailable or missing required components (e.g., model not downloaded)
+    - "degraded": Some services unavailable
     """
     settings = get_settings()
 
@@ -106,14 +117,7 @@ async def health_check() -> HealthResponse:
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=5.0)
             if response.status_code == 200:
-                data = response.json()
-                models = [m.get("name", "") for m in data.get("models", [])]
-                # Check if gemma4:e4b model is downloaded
-                if "gemma4:e4b" in models or "gemma4" in models:
-                    ollama_status = "connected"
-                else:
-                    ollama_status = "model_missing"
-                    logger.warning("Ollama connected but gemma4 model not found. Available: {}", models)
+                ollama_status = "connected"
     except Exception as exc:
         logger.warning("Ollama health check failed: {}", exc)
 

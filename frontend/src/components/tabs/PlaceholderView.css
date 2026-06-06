@@ -1,0 +1,93 @@
+/* Placeholder View Styles */
+
+.placeholder-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+  text-align: center;
+  padding: var(--spacing-2xl);
+  color: var(--text-secondary);
+}
+
+.placeholder-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  max-width: 420px;
+}
+
+.placeholder-icon {
+  font-size: var(--font-size-5xl);
+  opacity: 0.5;
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-primary-300);
+}
+
+.placeholder-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.placeholder-description {
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-relaxed);
+  color: var(--text-secondary);
+  max-width: 380px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.placeholder-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 6px var(--spacing-md);
+  background-color: var(--color-primary-50);
+  color: var(--color-primary-700);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  border: 1px solid var(--color-primary-200);
+}
+
+.placeholder-badge-icon {
+  font-size: var(--font-size-xs);
+}
+
+/* Animations */
+@media (prefers-reduced-motion: no-preference) {
+  .placeholder-icon {
+    animation: gentle-float 3s ease-in-out infinite;
+  }
+
+  @keyframes gentle-float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .placeholder-view {
+    min-height: 300px;
+    padding: var(--spacing-lg);
+  }
+
+  .placeholder-icon {
+    font-size: var(--font-size-4xl);
+  }
+
+  .placeholder-title {
+    font-size: var(--font-size-lg);
+  }
+
+  .placeholder-description {
+    font-size: var(--font-size-sm);
+    max-width: 300px;
+  }
+}

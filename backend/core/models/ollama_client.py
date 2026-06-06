@@ -64,6 +64,7 @@ class OllamaClient:
         model: str | None = None,
         system: str | None = None,
         temperature: float = 0.7,
+        max_tokens: int = 2048,
     ) -> AsyncGenerator[str, None]:
         """Stream tokens from the LLM.
 
@@ -72,6 +73,7 @@ class OllamaClient:
             model: Model name override.
             system: Optional system prompt.
             temperature: Sampling temperature.
+            max_tokens: Maximum tokens to generate.
 
         Yields:
             Individual tokens as they are generated.
@@ -83,6 +85,7 @@ class OllamaClient:
             "stream": True,
             "options": {
                 "temperature": temperature,
+                "num_predict": max_tokens,
             },
         }
         if system:

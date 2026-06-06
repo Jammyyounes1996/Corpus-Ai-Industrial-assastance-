@@ -13,7 +13,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from backend.config.settings import get_settings
 from backend.database.database import Base
+
+settings = get_settings()
 
 
 class Project(Base):
@@ -24,7 +27,7 @@ class Project(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -46,12 +49,12 @@ class Chat(Base):
     model_provider: Mapped[str] = mapped_column(String(50), nullable=False)
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
-        onupdate=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -83,7 +86,7 @@ class Message(Base):
     retrieved_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     attached_files: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -105,7 +108,7 @@ class File(Base):
     indexing_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -113,11 +116,13 @@ class File(Base):
         back_populates="file",
         cascade="all, delete-orphan",
         uselist=False,
+        lazy="selectin",
     )
     transcript: Mapped["Transcript | None"] = relationship(
         back_populates="file",
         cascade="all, delete-orphan",
         uselist=False,
+        lazy="selectin",
     )
 
 
@@ -136,7 +141,7 @@ class OCRResult(Base):
     extracted_text: Mapped[str] = mapped_column(Text, nullable=False)
     model_used: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -159,7 +164,7 @@ class Transcript(Base):
     duration_seconds: Mapped[float] = mapped_column(Float, nullable=False)
     language: Mapped[str] = mapped_column(String(10), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -173,13 +178,13 @@ class AppSettings(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, default=1)
     model_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="ollama")
-    model_name: Mapped[str] = mapped_column(String(100), nullable=False, default="gemma4:latest")
+    model_name: Mapped[str] = mapped_column(String(100), nullable=False, default=settings.DEFAULT_MODEL_NAME)
     gemini_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     grok_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     theme: Mapped[str] = mapped_column(String(10), nullable=False, default="light")
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
-        onupdate=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -204,8 +209,9 @@ class EvaluationResult(Base):
     answer_relevancy: Mapped[float | None] = mapped_column(Float, nullable=True)
     context_precision: Mapped[float | None] = mapped_column(Float, nullable=True)
     context_recall: Mapped[float | None] = mapped_column(Float, nullable=True)
+    model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        default=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
@@ -218,8 +224,10 @@ class EvaluationResult(Base):
 
 
 Index("idx_chats_updated_at", Chat.updated_at.desc())
+Index("idx_chat_updated", Chat.updated_at.desc())
 Index("idx_chats_project_id", Chat.project_id)
 Index("idx_messages_chat_id_created", Message.chat_id, Message.created_at)
+Index("idx_message_chat", Message.chat_id, Message.created_at.asc())
 Index("idx_files_type", File.file_type)
 Index("idx_files_created_at", File.created_at.desc())
 Index("idx_files_status", File.indexing_status)

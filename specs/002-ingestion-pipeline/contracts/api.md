@@ -123,7 +123,7 @@ Upload an audio file for transcription and indexing.
 
 | Field | Type | Required | Constraints |
 |-------|------|----------|-------------|
-| file | File | Yes | MIME type: `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg`, Max size: 100 MB |
+| file | File | Yes | MIME type: `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg`, `audio/mp4`, Max size: 100 MB |
 
 ### Success Response (200)
 ```json
@@ -158,9 +158,9 @@ Upload an audio file for transcription and indexing.
 ```json
 {
   "error": "InvalidFileType",
-  "message": "Invalid file type for audio endpoint. Allowed types: audio/mpeg, audio/wav, audio/m4a, audio/ogg",
+  "message": "Invalid file type for audio endpoint. Allowed types: audio/mpeg, audio/wav, audio/m4a, audio/ogg, audio/mp4",
   "details": {
-    "allowed_types": ["audio/mpeg", "audio/wav", "audio/m4a", "audio/ogg"],
+    "allowed_types": ["audio/mpeg", "audio/wav", "audio/m4a", "audio/ogg", "audio/mp4"],
     "actual_type": "video/mp4"
   }
 }

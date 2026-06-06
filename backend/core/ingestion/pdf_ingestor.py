@@ -68,18 +68,18 @@ class PDFIngestor:
         try:
             result = await groundx_client.upload_pdf(disk_path, original_name)
 
-            groundx_doc_id = result.get("document_id")
-            if groundx_doc_id:
+            process_id = result.get("process_id")
+            if process_id:
                 await crud.update_file_indexing_status(
                     session,
                     db_file.id,
                     status="processing",
-                    groundx_id=str(groundx_doc_id),
+                    groundx_id=str(process_id),
                 )
                 logger.info(
-                    "PDF '{}' uploaded to GroundX, doc_id={}",
+                    "PDF '{}' uploaded to GroundX, process_id={}",
                     original_name,
-                    groundx_doc_id,
+                    process_id,
                 )
             else:
                 await crud.update_file_indexing_status(

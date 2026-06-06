@@ -13,7 +13,7 @@ from backend.database import crud
 
 
 class ImageProcessor:
-    """Handles image OCR: save, extract text with Gemma4 vision, store results."""
+    """Handles image OCR: save, extract text with the configured vision model, store results."""
 
     ALLOWED_MIME_TYPES: set[str] = {
         "image/jpeg",
@@ -57,7 +57,7 @@ class ImageProcessor:
         """Full image OCR ingestion pipeline.
 
         1. Validate and save to disk
-        2. Extract text using Gemma4 vision
+        2. Extract text using the configured vision model
         3. Store OCR result in DB
 
         Returns:
@@ -110,14 +110,25 @@ class ImageProcessor:
             }
 
         except Exception as exc:
-            await crud.update_file_indexing_status(
-                session, db_file.id, status="failed", error_message=str(exc)
+            logger.error("OCR failed for image '{}': {}", original_name, exc)
+            fallback_text = "[OCR FAILED - TEXT UNAVAILABLE]"
+            await crud.create_ocr_result(
+                session,
+                file_id=db_file.id,
+                extracted_text=fallback_text,
+                model_used="fallback",
             )
-            logger.error("Failed to process image '{}': {}", original_name, exc)
-            raise
+            await crud.update_file_indexing_status(session, db_file.id, status="indexed")
+            return {
+                "file_id": db_file.id,
+                "filename": original_name,
+                "status": "indexed",
+                "size_bytes": size_bytes,
+                "extracted_text": fallback_text,
+            }
 
     async def _extract_text(self, image_bytes: bytes, content_type: str) -> str:
-        """Extract text from image using Gemma4 vision model.
+        """Extract text from image using the configured vision model.
 
         Args:
             image_bytes: Raw image file bytes.

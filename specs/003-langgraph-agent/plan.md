@@ -1,8 +1,9 @@
 # Implementation Plan: LangGraph Agent
 
-**Branch**: `004-langgraph-agent` | **Date**: 2026-05-20 | **Spec**: [spec.md](spec.md)
+**Branch**: `004-langgraph-agent` | **Date**: 2026-05-22 | **Spec**: [spec.md](spec.md)
+**Input**: Feature specification from `/specs/003-langgraph-agent/spec.md`
 
-**Note**: This template is filled in by `/speckit-plan` command. See `.specify/templates/plan-template.md` for execution workflow.
+**Note**: This template is filled in by the `/speckit-plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
 
 ## Summary
 
@@ -16,18 +17,15 @@ Build a LangGraph agent system that answers natural language questions over inge
 **Testing**: pytest, pytest-asyncio
 **Target Platform**: Linux/Windows/MacOS (local development)
 **Project Type**: Web service backend (FastAPI with SSE streaming)
-
 **Performance Goals**:
 - First thinking step within 3 seconds of query submission
 - Full answers (including thinking steps) complete within 30 seconds for typical queries
 - Streaming token latency averages <200ms between tokens
-
 **Constraints**:
 - External service timeout: 15 seconds per call with 2 retries using exponential backoff (total 60s max)
 - Conversation memory limit: 50 turns maximum before summarization triggers
 - Summarization: 20 oldest turns summarized to 2 sentence overview per turn
 - Safety: Use LLM's built-in guardrails; display whatever refusal message model generates
-
 **Scale/Scope**: Single-user mode (no multi-tenant isolation requirements)
 
 ## Constitution Check
@@ -70,7 +68,6 @@ backend/
 │   │   ├── state.py              # AgentState TypedDict definition
 │   │   ├── nodes.py              # LangGraph node functions
 │   │   ├── graph.py              # Graph compilation
-│   │   ├── tools.py              # LangChain tool definitions
 │   │   └── streaming.py          # SSE event helpers
 │   └── retrieval/
 │       ├── __init__.py
@@ -82,11 +79,11 @@ backend/
 │       └── chat.py               # Chat streaming endpoint
 ├── schemas/
 │   ├── __init__.py
-│   └── chat.py                # Pydantic models for chat API
+│   └── chat.py                   # Pydantic models for chat API
 ├── database/
-│   ├── models.py              # Already exists; add Chat, Message tables
-│   └── crud.py                 # Already exists; add chat/message CRUD operations
-└── main.py                     # FastAPI app entry; mount chat router
+│   ├── models.py                 # Already exists; add Chat, Message tables
+│   └── crud.py                   # Already exists; add chat/message CRUD operations
+└── main.py                       # FastAPI app entry; mount chat router
 ```
 
 **Structure Decision**: Follow existing project structure from Phase 1/2. Agent module in `backend/core/agent/`, API routes in `backend/api/routes/`, schemas in `backend/schemas/`. Database models extend existing `models.py` and `crud.py`.
@@ -400,19 +397,7 @@ curl http://localhost:8000/api/chats | jq
 # Delete a chat session
 curl -X DELETE http://localhost:8000/api/chats/550e8400-e29b-41d4-a716-44665544010
 ```
-
-### Agent Context Update
-
-The plan reference in `CLAUDE.md` points to this plan file:
-
-```markdown
-<!-- SPECKIT START -->
-**Current Plan**: specs/003-langgraph-agent/plan.md
-**Constitution**: CONSTITUTION.md
-<!-- SPECKIT END -->
 ```
-
-(To be applied after this plan is generated)
 
 ## Phase 2: Implementation Plan
 
@@ -457,9 +442,8 @@ The plan reference in `CLAUDE.md` points to this plan file:
 6. Implement `context_synthesis_node` in `backend/core/agent/nodes.py`
 7. Implement `answer_node` in `backend/core/agent/nodes.py`
 8. Create LangGraph graph in `backend/core/agent/graph.py` with conditional edges
-9. Define LangChain tools in `backend/core/agent/tools.py`
-10. Create SSE streaming helpers in `backend/core/agent/streaming.py`
-11. Implement RRF fusion in `backend/core/retrieval/fusion.py` (if not in Phase 2)
+9. Create SSE streaming helpers in `backend/core/agent/streaming.py`
+10. Implement RRF fusion in `backend/core/retrieval/fusion.py` (if not in Phase 2)
 
 **Acceptance Criteria**:
 - Graph compiles without errors: `graph = builder.compile()`

@@ -1,0 +1,36 @@
+/* Workspace Header Styles */
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--spacing-xl);
+  height: 56px;
+  background-color: var(--surface-main);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.workspace-header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.workspace-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.workspace-status {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Tab navigation placeholder */
+.tab-navigation {
+  display: flex;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-sm) 0;
+}

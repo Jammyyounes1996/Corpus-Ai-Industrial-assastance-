@@ -50,7 +50,9 @@ An AI-powered assistant for industrial environments with RAG capabilities, docum
 
 7. **Start backend:**
    ```bash
-   uvicorn backend.main:app --reload --port 8000
+   python run.py
+   # Or with uvicorn directly:
+   # uvicorn backend.main:app --reload --port 8001
    ```
 
 8. **Start frontend (in a new terminal):**

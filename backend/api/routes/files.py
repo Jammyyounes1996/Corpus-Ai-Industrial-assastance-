@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi.responses import FileResponse
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,34 +12,6 @@ from backend.database.database import get_session
 from backend.schemas.ingest import ErrorResponse
 
 router = APIRouter(prefix="/api/files", tags=["files"])
-
-
-def _file_to_dict(file: object) -> dict:
-    """Convert a File ORM object to a dict with enriched metadata."""
-    data = {
-        "id": file.id,
-        "original_name": file.original_name,
-        "file_type": file.file_type,
-        "size_bytes": file.size_bytes,
-        "indexing_status": file.indexing_status,
-        "error_message": file.error_message,
-        "created_at": file.created_at.isoformat() if file.created_at else None,
-    }
-
-    if file.transcript:
-        data["transcript_summary"] = {
-            "duration_seconds": file.transcript.duration_seconds,
-            "language": file.transcript.language,
-        }
-
-    if file.ocr_result:
-        text = file.ocr_result.extracted_text
-        data["ocr_summary"] = {
-            "text_preview": text[:200] if text else "",
-            "model_used": file.ocr_result.model_used,
-        }
-
-    return data
 
 
 @router.get("")
@@ -75,8 +48,36 @@ async def list_files(
         offset=offset,
     )
 
+    files_data = []
+    for file in files:
+        data = {
+            "id": file.id,
+            "original_name": file.original_name,
+            "file_type": file.file_type,
+            "size_bytes": file.size_bytes,
+            "indexing_status": file.indexing_status,
+            "error_message": file.error_message,
+            "created_at": file.created_at.isoformat() if file.created_at else None,
+        }
+
+        if file.transcript:
+            data["transcript_summary"] = {
+                "duration_seconds": file.transcript.duration_seconds,
+                "language": file.transcript.language,
+                "text": file.transcript.transcript_text,
+            }
+
+        if file.ocr_result:
+            text = file.ocr_result.extracted_text
+            data["ocr_summary"] = {
+                "text_preview": text[:200] if text else "",
+                "model_used": file.ocr_result.model_used,
+            }
+
+        files_data.append(data)
+
     return {
-        "files": [_file_to_dict(f) for f in files],
+        "files": files_data,
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -129,12 +130,11 @@ async def delete_file_endpoint(
     qdrant_collection = db_file.qdrant_collection
 
     # Pre-flight validation: check if we can delete from each location
-    can_delete_disk = False
+    can_delete_disk = True
     can_delete_qdrant = False
     can_delete_db = True
 
     if not qdrant_collection:
-        # No Qdrant data to delete
         can_delete_qdrant = True
     elif await _qdrant_collection_exists(qdrant_collection):
         can_delete_qdrant = True
@@ -145,20 +145,13 @@ async def delete_file_endpoint(
         )
         can_delete_qdrant = True
 
-    if disk_path:
-        path = Path(disk_path)
-        can_delete_disk = path.exists() and not path.is_file()
-    else:
-        can_delete_disk = True
-
-    if not (can_delete_disk and can_delete_qdrant and can_delete_db):
+    if not (can_delete_qdrant and can_delete_db):
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "DeletionError",
                 "message": "Cannot proceed with deletion - pre-flight checks failed",
                 "details": {
-                    "disk": can_delete_disk,
                     "qdrant": can_delete_qdrant,
                     "database": can_delete_db,
                 },
@@ -183,11 +176,15 @@ async def delete_file_endpoint(
         logger.info("Database records deleted for file {}", file_id)
 
         # Step 3: Delete from disk (cannot rollback)
-        if can_delete_disk:
+        # Only attempt deletion if file exists; skip if missing
+        if disk_path:
             path = Path(disk_path)
-            path.unlink()
-            disk_deleted = True
-            logger.info("Disk file deleted for file {}", file_id)
+            if path.exists():
+                path.unlink()
+                disk_deleted = True
+                logger.info("Disk file deleted for file {}", file_id)
+            else:
+                logger.info("Disk file not found for file {}, skipping deletion", file_id)
 
         # All successful - commit transaction
         await session.commit()
@@ -234,3 +231,29 @@ async def _delete_qdrant_chunks(file_id: str, collection: str) -> None:
         ),
     )
     logger.info("Deleted Qdrant chunks for file {} from {}", file_id, collection)
+
+
+@router.get("/{file_id}/content")
+async def get_file_content(
+    file_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    db_file = await crud.get_file(session, file_id)
+    if db_file is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "NotFound", "message": f"File not found: {file_id}"},
+        )
+
+    disk_path = Path(db_file.disk_path)
+    if not disk_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "NotFound", "message": "File not found on disk"},
+        )
+
+    return FileResponse(
+        path=str(disk_path),
+        filename=db_file.original_name,
+        media_type="application/octet-stream",
+    )

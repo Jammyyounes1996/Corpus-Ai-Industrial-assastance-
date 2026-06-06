@@ -1,0 +1,30 @@
+/* Message List Styles */
+
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-300) transparent;
+  direction: ltr;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.message-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.message-list::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-300);
+  border-radius: var(--radius-full);
+}
+
+.message-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neutral-400);
+}
+
+.message-list::-webkit-scrollbar-track {
+  background: transparent;
+}

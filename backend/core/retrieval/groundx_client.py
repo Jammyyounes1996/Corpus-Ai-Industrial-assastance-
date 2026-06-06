@@ -1,7 +1,9 @@
 import asyncio
 from pathlib import Path
 
-from groundx import ApiException, Configuration, Groundx
+from groundx import Groundx, ApiException
+from groundx.model.document_local_ingest_request_item import DocumentLocalIngestRequestItem
+from groundx.model.document_local_ingest_request_item_metadata import DocumentLocalIngestRequestItemMetadata
 from loguru import logger
 
 from backend.config.settings import get_settings
@@ -14,11 +16,7 @@ class GroundXClient:
         self._settings = get_settings()
 
     def _get_client(self) -> Groundx:
-        config = Configuration(
-            api_key=self._settings.GROUNDX_API_KEY,
-            api_key_prefix="Bearer",
-        )
-        return Groundx(configuration=config)
+        return Groundx(api_key=self._settings.GROUNDX_API_KEY)
 
     async def upload_pdf(
         self,
@@ -32,7 +30,7 @@ class GroundXClient:
             original_name: Original filename from the upload.
 
         Returns:
-            Dict with 'search_id' and 'document_id' from GroundX.
+            Dict with 'process_id' and 'status' from GroundX.
 
         Raises:
             RuntimeError: If the upload fails.
@@ -41,49 +39,40 @@ class GroundXClient:
         client = self._get_client()
 
         try:
+            metadata = DocumentLocalIngestRequestItemMetadata(
+                fileName=original_name,
+                bucketId=int(self._settings.GROUNDX_BUCKET_ID),  # ← int() مهمة
+                fileType="pdf",
+            )
+
             with open(file_path, "rb") as f:
-                response = client.documents.ingest_local(
-                    body={
-                        "documents": [
-                            {
-                                "bucketId": str(self._settings.GROUNDX_BUCKET_ID),
-                                "fileName": original_name,
-                                "fileData": f,
-                                "contentType": "application/pdf",
-                            }
-                        ]
-                    }
+                document = DocumentLocalIngestRequestItem(
+                    metadata=metadata,
+                    blob=f,
                 )
 
-            ingest_data = response
+                response = client.documents.ingest_local(
+                    body=[document]
+                )
+            ingest_data = response.body
             logger.info(
                 "GroundX upload successful for '{}': {}",
                 original_name,
                 ingest_data,
             )
 
-            search_id = None
-            document_id = None
+            process_id = None
+            status = None
 
-            if hasattr(ingest_data, "body") and ingest_data.body:
-                body = ingest_data.body
-                if isinstance(body, dict):
-                    search_id = body.get("searchId") or body.get("search_id")
-                    document_id = body.get("documentId") or body.get("document_id")
-                    ingest = body.get("ingest") or {}
-                    if not search_id:
-                        search_id = ingest.get("searchId") or ingest.get("search_id")
-                    if not document_id:
-                        docs = ingest.get("documents") or []
-                        if docs:
-                            document_id = (
-                                docs[0].get("documentId")
-                                or docs[0].get("document_id")
-                            )
+            if isinstance(ingest_data, dict) and "ingest" in ingest_data:
+                ingest = ingest_data["ingest"]
+                process_id = ingest.get("processId")
+                status = ingest.get("status")
 
             return {
-                "search_id": search_id,
-                "document_id": document_id,
+                "process_id": process_id,
+                "status": status,
+                "document_id": None,  # Will be populated after processing completes
             }
 
         except ApiException as exc:
@@ -95,14 +84,14 @@ class GroundXClient:
 
     async def poll_indexing_status(
         self,
-        document_id: str,
+        process_id: str,
         max_wait: int = 300,
         poll_interval: int = 2,
     ) -> dict:
         """Poll GroundX for document indexing status.
 
         Args:
-            document_id: The GroundX document ID to check.
+            process_id: The GroundX process ID from the ingest response.
             max_wait: Maximum seconds to wait (default 300 = 5 min).
             poll_interval: Seconds between polls (default 2).
 
@@ -119,36 +108,84 @@ class GroundXClient:
         while elapsed < max_wait:
             try:
                 response = client.documents.get_processing_status_by_id(
-                    document_id=document_id,
+                    process_id=process_id,
                 )
 
                 status = None
-                if hasattr(response, "body") and response.body:
-                    body = response.body if isinstance(response.body, dict) else {}
-                    doc = body.get("document") or body
-                    status = doc.get("status", "").lower()
+                if isinstance(response.body, dict):
+                    ingest = response.body.get("ingest") or {}
+                    status = ingest.get("status", "").lower()
 
-                logger.debug("GroundX poll for doc {}: status={}", document_id, status)
+                logger.debug("GroundX poll for process {}: status={}", process_id, status)
 
-                if status in ("complete", "completed", "indexed"):
+                if status in ("complete", "completed"):
                     return {"status": "complete"}
 
                 if status in ("error", "failed"):
                     error_msg = ""
                     if isinstance(response.body, dict):
-                        doc = response.body.get("document") or response.body
-                        error_msg = doc.get("error", "Unknown error")
+                        ingest = response.body.get("ingest") or {}
+                        error_msg = ingest.get("error", "Unknown error")
                     return {"status": "error", "error_message": error_msg}
 
             except ApiException as exc:
-                logger.warning("GroundX poll API error for doc {}: {}", document_id, exc)
+                logger.warning("GroundX poll API error for process {}: {}", process_id, exc)
 
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
 
         raise TimeoutError(
-            f"GroundX indexing timed out after {max_wait}s for document {document_id}"
+            f"GroundX indexing timed out after {max_wait}s for process {process_id}"
         )
+
+
+    async def search(self, query: str, n_results: int = 5) -> list[dict]:
+        """Search indexed documents in GroundX for relevant content.
+
+        Args:
+            query: Natural language search query.
+            n_results: Maximum number of results to return.
+
+        Returns:
+            List of dicts with keys: content, score, file_name, chunk_id.
+
+        Raises:
+            RuntimeError: If the search request fails.
+        """
+        client = self._get_client()
+
+        try:
+            response = client.search.content(
+                id=int(self._settings.GROUNDX_BUCKET_ID),
+                query=query,
+            )
+
+            results: list[dict] = []
+            search_data = response.body if hasattr(response, "body") else {}
+            search_obj = search_data.get("search", {})
+            chunks = search_obj.get("results", [])
+
+            for chunk in chunks[:n_results]:
+                results.append({
+                    "content": chunk.get("text", ""),
+                    "score": float(chunk.get("score", 0.0)),
+                    "file_name": chunk.get("fileName", ""),
+                    "chunk_id": str(chunk.get("chunkId", "")),
+                })
+
+            logger.info(
+                "GroundX search for '{}': {} results",
+                query[:80],
+                len(results),
+            )
+            return results
+
+        except ApiException as exc:
+            logger.error("GroundX search API error: {}", exc)
+            raise RuntimeError(f"GroundX search failed: {exc}") from exc
+        except Exception as exc:
+            logger.error("GroundX search unexpected error: {}", exc)
+            raise RuntimeError(f"GroundX search failed: {exc}") from exc
 
 
 groundx_client = GroundXClient()

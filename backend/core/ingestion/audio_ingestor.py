@@ -24,6 +24,7 @@ class AudioIngestor:
         "audio/m4a",
         "audio/x-m4a",
         "audio/ogg",
+        "audio/mp4",
     }
 
     def __init__(self) -> None:
@@ -46,10 +47,15 @@ class AudioIngestor:
 
     def _get_compute_type(self, device: str) -> str:
         """Select compute type based on device."""
+        if device == "cpu":
+            return "int8"
+        if device == "cuda":
+            return "float16"
+
         setting = self._settings.WHISPER_COMPUTE_TYPE
         if setting != "auto":
             return setting
-        return "float16" if device == "cuda" else "int8"
+        return "float16"
 
     def _get_whisper_model(self) -> WhisperModel:
         """Lazy-load the Whisper model."""
@@ -199,6 +205,19 @@ class AudioIngestor:
 
             client = QdrantClient(url=self._settings.QDRANT_URL)
             collection = self._settings.QDRANT_COLLECTION
+
+            try:
+                existing = [c.name for c in client.get_collections().collections]
+                if collection not in existing:
+                    from qdrant_client.models import Distance, SparseIndexParams, SparseVectorParams, VectorParams
+                    client.create_collection(
+                        collection_name=collection,
+                        vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                        sparse_vectors_config={"bm25": SparseVectorParams(index=SparseIndexParams(on_disk=False))},
+                    )
+                    logger.info("Created Qdrant collection '{}' as fallback", collection)
+            except Exception as exc:
+                logger.warning("Fallback collection check failed: {}", exc)
 
             points = []
             now = datetime.now(timezone.utc).isoformat()

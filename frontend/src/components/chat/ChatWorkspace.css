@@ -1,0 +1,42 @@
+/* Chat Workspace Styles */
+
+.chat-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  max-width: 820px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.chat-workspace__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-3xl) var(--spacing-xl);
+  text-align: center;
+}
+
+.chat-workspace__empty-icon {
+  color: var(--color-primary-300);
+  opacity: 0.6;
+}
+
+.chat-workspace__empty-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.chat-workspace__empty-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 400px;
+  line-height: var(--line-height-relaxed);
+}

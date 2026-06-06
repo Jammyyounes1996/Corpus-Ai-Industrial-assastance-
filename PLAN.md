@@ -1070,7 +1070,7 @@ All file uploads are validated at the FastAPI boundary using `UploadFile` with e
 | File Type | Max Size | Allowed MIME Types |
 |-----------|----------|---------------------|
 | PDF | 100 MB | `application/pdf` |
-| Audio | 100 MB | `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg` |
+| Audio | 100 MB | `audio/mpeg`, `audio/wav`, `audio/m4a`, `audio/ogg`, `audio/mp4` |
 | Image | 25 MB | `image/jpeg`, `image/png`, `image/webp` |
 
 **Validation behavior:**

@@ -45,3 +45,6 @@ logs/
 
 # Alembic
 backend/database/migrations/versions/*.pyc
+
+#Graphyfi
+graphify-out\cache

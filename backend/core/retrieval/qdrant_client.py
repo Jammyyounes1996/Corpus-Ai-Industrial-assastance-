@@ -92,6 +92,7 @@ class QdrantRetriever:
         *,
         limit: int = 10,
         file_type_filter: str | None = None,
+        file_id_filter: list[str] | None = None,
         rrf_k: int = 60,
     ) -> list[dict]:
         """Execute a hybrid query combining dense and sparse (BM25) search.
@@ -102,6 +103,7 @@ class QdrantRetriever:
             query_text: The search query.
             limit: Maximum results to return.
             file_type_filter: Optional file type to filter by.
+            file_id_filter: Optional list of file IDs to scope retrieval.
             rrf_k: RRF constant for score fusion.
 
         Returns:
@@ -110,9 +112,11 @@ class QdrantRetriever:
         from qdrant_client.models import (
             FieldCondition,
             Filter,
+            Fusion,
+            FusionQuery,
+            MatchAny,
             MatchValue,
             Prefetch,
-            Query,
             SparseVector,
         )
 
@@ -122,34 +126,40 @@ class QdrantRetriever:
         dense_vector = await self.generate_dense_vector(query_text)
         sparse_vector = self.tokenize_for_bm25(query_text)
 
-        prefetch_filter = None
+        filter_conditions = []
         if file_type_filter:
-            prefetch_filter = Filter(
-                must=[FieldCondition(key="file_type", match=MatchValue(value=file_type_filter))]
+            filter_conditions.append(
+                FieldCondition(key="file_type", match=MatchValue(value=file_type_filter))
             )
+        if file_id_filter:
+            filter_conditions.append(
+                FieldCondition(key="file_id", match=MatchAny(any=file_id_filter))
+            )
+        prefetch_filter = Filter(must=filter_conditions) if filter_conditions else None
 
         sparse_vec = SparseVector(
             indices=list(sparse_vector.keys()),
             values=list(sparse_vector.values()),
         )
 
+        prefetch_multiplier = 4
         results = client.query_points(
             collection_name=collection,
             prefetch=[
                 Prefetch(
                     query=dense_vector,
                     using="",
-                    limit=limit * 3,
+                    limit=limit * prefetch_multiplier,
                     filter=prefetch_filter,
                 ),
                 Prefetch(
                     query=sparse_vec,
                     using="bm25",
-                    limit=limit * 3,
+                    limit=limit * prefetch_multiplier,
                     filter=prefetch_filter,
                 ),
             ],
-            query=Query(fusion=rrf_k),
+            query=FusionQuery(fusion=Fusion.RRF),
             limit=limit,
         )
 
