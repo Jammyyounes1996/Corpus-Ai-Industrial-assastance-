@@ -25,7 +25,15 @@ export interface Message {
   attachments?: AttachedFile[]
   sources?: SourceReference[]
   thinkingSteps?: ThinkingStep[]
+  usage?: UsageMetadata
   error?: string
+}
+
+export interface UsageMetadata {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  generation_time_ms: number
 }
 
 export interface ThinkingStep {
@@ -81,6 +89,7 @@ export interface DoneEvent {
   data: {
     message_id: string
     chat_id: string
+    usage?: UsageMetadata
   }
 }
 

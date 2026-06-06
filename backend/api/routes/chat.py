@@ -266,6 +266,7 @@ async def stream_chat(
         collected_thinking_steps: list[dict[str, Any]] = []
         collected_sources: list[dict[str, Any]] = []
         answer_text_parts: list[str] = []
+        usage_metadata: dict[str, int] | None = None
         done_sent = False
 
         async def _run_graph() -> dict[str, Any]:
@@ -305,6 +306,9 @@ async def stream_chat(
                     yield _sse(payload_data["event"], payload_data["data"])
 
                 elif event_type == "done":
+                    done_data = event.get("data")
+                    if isinstance(done_data, dict) and isinstance(done_data.get("usage"), dict):
+                        usage_metadata = done_data["usage"]
                     break
 
                 elif event_type == "error":
@@ -330,6 +334,8 @@ async def stream_chat(
                 else:
                     final_state = graph_task.result()
                     if isinstance(final_state, dict):
+                        if usage_metadata is None and isinstance(final_state.get("usage"), dict):
+                            usage_metadata = final_state["usage"]
                         if not answer_text:
                             answer_text = final_state.get("answer", "")
                             if answer_text:
@@ -383,7 +389,7 @@ async def stream_chat(
                 thinking_steps=json.dumps(collected_thinking_steps),
                 retrieved_context=json.dumps(collected_sources),
             )
-            done_payload = emit_done(assistant_message.id, chat_id)
+            done_payload = emit_done(assistant_message.id, chat_id, usage_metadata)
             yield _sse(done_payload["event"], done_payload["data"])
             done_sent = True
 
@@ -403,7 +409,7 @@ async def stream_chat(
             yield _sse(error_payload["event"], error_payload["data"])
         finally:
             if not done_sent:
-                done_payload = emit_done(assistant_message.id, chat_id)
+                done_payload = emit_done(assistant_message.id, chat_id, usage_metadata)
                 yield _sse(done_payload["event"], done_payload["data"])
 
     return EventSourceResponse(event_stream())

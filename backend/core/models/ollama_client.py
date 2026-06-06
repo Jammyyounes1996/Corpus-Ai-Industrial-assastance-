@@ -65,7 +65,7 @@ class OllamaClient:
         system: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[str | dict, None]:
         """Stream tokens from the LLM.
 
         Args:
@@ -76,7 +76,9 @@ class OllamaClient:
             max_tokens: Maximum tokens to generate.
 
         Yields:
-            Individual tokens as they are generated.
+            Individual tokens (str) as they are generated.
+            The final yield is a dict with Ollama metadata when done=True:
+            eval_count, prompt_eval_count, total_duration, etc.
         """
         model = model or self._settings.OLLAMA_MODEL
         payload: dict = {
@@ -108,6 +110,11 @@ class OllamaClient:
                         if token:
                             yield token
                         if chunk.get("done", False):
+                            yield {
+                                "eval_count": chunk.get("eval_count"),
+                                "prompt_eval_count": chunk.get("prompt_eval_count"),
+                                "total_duration": chunk.get("total_duration"),
+                            }
                             break
                     except json.JSONDecodeError:
                         continue

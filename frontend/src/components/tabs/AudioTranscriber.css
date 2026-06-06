@@ -1,0 +1,167 @@
+/* Audio Transcriber */
+.tools-audio__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-xl, 32px);
+  color: var(--text-secondary, #888);
+}
+
+.tools-audio__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-lg, 24px);
+  color: var(--color-error, #ef4444);
+  text-align: center;
+}
+
+.tools-audio__retry {
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  background: var(--surface-hover, #2a2a2a);
+  border: 1px solid var(--surface-border, #333);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-primary, #e0e0e0);
+  cursor: pointer;
+  font-size: var(--font-size-sm, 14px);
+}
+
+.tools-audio__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-xl, 32px);
+  color: var(--text-tertiary, #666);
+  text-align: center;
+}
+
+.tools-audio__empty h3 {
+  margin: 0;
+  font-size: var(--font-size-lg, 18px);
+  color: var(--text-primary, #e0e0e0);
+}
+
+.tools-audio__empty p {
+  margin: 0;
+  font-size: var(--font-size-sm, 14px);
+}
+
+.tools-audio__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 4px);
+}
+
+.tools-audio__item {
+  background: var(--surface-card, #1a1a1a);
+  border: 1px solid var(--surface-border, #2a2a2a);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+}
+
+.tools-audio__item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  width: 100%;
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
+  background: none;
+  border: none;
+  color: var(--text-primary, #e0e0e0);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--font-size-sm, 14px);
+  transition: background var(--transition-fast, 0.15s);
+}
+
+.tools-audio__item-header:hover {
+  background: var(--surface-hover, #2a2a2a);
+}
+
+.tools-audio__item-icon {
+  color: var(--color-primary, #6366f1);
+  flex-shrink: 0;
+}
+
+.tools-audio__item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.tools-audio__item-duration,
+.tools-audio__item-lang {
+  font-size: var(--font-size-xs, 12px);
+  padding: 1px 6px;
+  background: var(--surface-hover, #2a2a2a);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-secondary, #888);
+  white-space: nowrap;
+}
+
+.tools-audio__item-date {
+  font-size: var(--font-size-xs, 12px);
+  color: var(--text-tertiary, #666);
+  white-space: nowrap;
+}
+
+.tools-audio__item-body {
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 12px) var(--spacing-md, 12px);
+  border-top: 1px solid var(--surface-border, #2a2a2a);
+}
+
+.tools-audio__transcript {
+  padding: var(--spacing-sm, 8px);
+  background: var(--surface-hover, #2a2a2a);
+  border-radius: var(--radius-sm, 4px);
+  margin-bottom: var(--spacing-sm, 8px);
+}
+
+.tools-audio__transcript-placeholder {
+  margin: 0;
+  font-size: var(--font-size-sm, 14px);
+  color: var(--text-secondary, #888);
+  line-height: 1.6;
+}
+
+.tools-audio__transcript-text {
+  margin: 0;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-secondary, #ccc);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.tools-audio__transcript-status {
+  margin: 0;
+  font-size: var(--font-size-sm, 14px);
+  color: var(--text-tertiary, #666);
+}
+
+.tools-audio__copy-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  background: var(--surface-hover, #2a2a2a);
+  border: 1px solid var(--surface-border, #333);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-primary, #e0e0e0);
+  cursor: pointer;
+  font-size: var(--font-size-xs, 12px);
+  transition: all var(--transition-fast, 0.15s);
+}
+
+.tools-audio__copy-btn:hover {
+  background: var(--surface-active, #3a3a3a);
+  border-color: var(--color-primary, #6366f1);
+}

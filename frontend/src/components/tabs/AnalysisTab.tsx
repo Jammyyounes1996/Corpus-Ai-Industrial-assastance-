@@ -119,6 +119,10 @@ export function AnalysisTab({ activeSession }: AnalysisTabProps) {
   const lastAssistantMsg = [...chatData.messages]
     .reverse()
     .find(m => m.role === 'assistant')
+  const lastSessionAssistantMsg = [...activeSession.messages]
+    .reverse()
+    .find(m => m.role === 'assistant')
+  const usage = lastSessionAssistantMsg?.usage
 
   if (!lastAssistantMsg) {
     return (
@@ -243,12 +247,10 @@ export function AnalysisTab({ activeSession }: AnalysisTabProps) {
             {modelDisplay} Reasoning Output
           </h3>
           <div className="analysis-reasoning__meta">
-            <span className="analysis-reasoning__stat">~{Math.round((lastAssistantMsg.content || '').length / 4)} tokens</span>
-            <span className="analysis-reasoning__stat">
-              {thinkingSteps.length > 0
-                ? `${thinkingSteps.reduce((sum, s) => sum + (s.duration_ms || 0), 0)}ms total`
-                : 'N/A'}
-            </span>
+            <span className="analysis-reasoning__stat">Prompt tokens: {usage?.prompt_tokens ?? '—'}</span>
+            <span className="analysis-reasoning__stat">Completion tokens: {usage?.completion_tokens ?? '—'}</span>
+            <span className="analysis-reasoning__stat">Total tokens: {usage?.total_tokens ?? '—'}</span>
+            <span className="analysis-reasoning__stat">Generation time: {usage ? `${usage.generation_time_ms}ms` : '—'}</span>
           </div>
           <div className="analysis-reasoning">
             <pre className="analysis-reasoning__text">{lastAssistantMsg.content}</pre>

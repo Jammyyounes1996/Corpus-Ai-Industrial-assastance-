@@ -264,6 +264,7 @@ async def answer_node(
         settings = get_settings()
         model_name = state.get("model_name") or settings.OLLAMA_MODEL
         tokens: list[str] = []
+        ollama_metadata: dict | None = None
         retrieval_provider = state.get("retrieval_provider", "")
         should_buffer_for_hedge = (
             retrieval_provider in ("groundx", "qdrant_audio")
@@ -279,6 +280,8 @@ async def answer_node(
                 temperature=0.0,
                 max_tokens=8,
             ):
+                if isinstance(token, dict):
+                    continue
                 classifier_tokens.append(token)
 
             answerability_decision = "".join(classifier_tokens)
@@ -347,11 +350,31 @@ async def answer_node(
             temperature=0.1,
             max_tokens=2048,
         ):
+            if isinstance(token, dict):
+                ollama_metadata = token
+                continue
             tokens.append(token)
             if token_queue is not None and not should_buffer_for_hedge:
                 await token_queue.put({"type": "token", "data": emit_token(token)})
 
         state["answer"] = "".join(tokens)
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        usage = None
+        if ollama_metadata:
+            prompt_tokens = ollama_metadata.get("prompt_eval_count")
+            completion_tokens = ollama_metadata.get("eval_count")
+            total_duration = ollama_metadata.get("total_duration")
+            if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
+                generation_time_ms = duration_ms
+                if isinstance(total_duration, int):
+                    generation_time_ms = total_duration // 1_000_000
+                usage = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                    "generation_time_ms": generation_time_ms,
+                }
+                state["usage"] = usage
 
         # ── Post-LLM no-match detection (safety net for groundx/audio modes) ──
         hedge_detected = False
@@ -383,9 +406,8 @@ async def answer_node(
         ):
             await token_queue.put({"type": "sources", "data": emit_sources(state["sources"])})
         if token_queue is not None:
-            await token_queue.put({"type": "done", "data": None})
+            await token_queue.put({"type": "done", "data": {"usage": usage} if usage else None})
 
-        duration_ms = int((time.perf_counter() - start_time) * 1000)
         logger.info(
             f"answer_node generated {len(tokens)} tokens in {duration_ms}ms "
             f"(category={category}, prompt_mode={prompt_mode})"

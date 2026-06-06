@@ -5,7 +5,7 @@
 */
 
 import { useState, useCallback, useRef } from 'react'
-import { ChatSession, ChatStreamEvent, Message, ThinkingStep, SourceReference } from '../types/chat'
+import { ChatSession, ChatStreamEvent, Message, ThinkingStep, SourceReference, UsageMetadata } from '../types/chat'
 import { AttachedFile } from '../types/attachments'
 import { generateChatTitle } from '../services/timeService'
 
@@ -26,7 +26,7 @@ export interface UseChatSessionsReturn {
   appendToken: (sessionId: string, token: string) => void
   setSources: (sessionId: string, messageId: string, sources: SourceReference[]) => void
   setThinkingSteps: (sessionId: string, messageId: string, steps: ThinkingStep[]) => void
-  completeMessage: (sessionId: string, messageId: string) => void
+  completeMessage: (sessionId: string, messageId: string, usage?: UsageMetadata) => void
   failMessage: (sessionId: string, messageId: string, error?: string) => void
   cancelMessage: (sessionId: string, messageId: string) => void
   createStreamEventHandler: (sessionId: string) => (event: ChatStreamEvent) => void
@@ -250,16 +250,17 @@ export function useChatSessions(): UseChatSessionsReturn {
     )
   }, [])
 
-  const completeMessage = useCallback((sessionId: string, messageId: string) => {
+  const completeMessage = useCallback((sessionId: string, messageId: string, usage?: UsageMetadata) => {
     setSessions(prev => 
       prev.map(session => {
         if (session.id !== sessionId) return session
 
-        const updatedMessages = session.messages.map(msg => 
-          msg.id === messageId 
-            ? { ...msg, status: 'complete' as const, timestamp: new Date() }
-            : msg
-        )
+        const updatedMessages = session.messages.map(msg => {
+          if (msg.id !== messageId) return msg
+          const updatedMessage: Message = { ...msg, status: 'complete', timestamp: new Date() }
+          if (usage) updatedMessage.usage = usage
+          return updatedMessage
+        })
 
         return {
           ...session,
@@ -341,7 +342,7 @@ export function useChatSessions(): UseChatSessionsReturn {
           break
         case 'done':
           if (messageId) {
-            completeMessage(sessionId, messageId)
+            completeMessage(sessionId, messageId, event.data.usage)
           }
           streamingMessageIdRef.current = null
           break

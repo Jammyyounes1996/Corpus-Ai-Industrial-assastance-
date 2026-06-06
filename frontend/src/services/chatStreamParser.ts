@@ -12,7 +12,8 @@ import {
   SourceReference,
   SourcesEvent,
   ThinkingStepEvent,
-  TokenEvent
+  TokenEvent,
+  UsageMetadata
 } from '../types/chat'
 
 export interface ParseResult {
@@ -337,6 +338,18 @@ function isSourceReference(source: unknown): source is SourceReference {
   )
 }
 
+function isUsageMetadata(usage: unknown): usage is UsageMetadata {
+  const data = parseRecord(usage)
+  if (!data) return false
+
+  return (
+    typeof data.prompt_tokens === 'number' &&
+    typeof data.completion_tokens === 'number' &&
+    typeof data.total_tokens === 'number' &&
+    typeof data.generation_time_ms === 'number'
+  )
+}
+
 /**
   * Validate and create a DoneEvent
   */
@@ -345,16 +358,18 @@ function validateDoneEvent(data: unknown): DoneEvent | null {
   const parsedData = parseRecord(data)
   if (!parsedData) return null
   
-  const { message_id, chat_id } = parsedData
+  const { message_id, chat_id, usage } = parsedData
   
   const normalizedMessageId = normalizeMessageId(message_id)
   if (!normalizedMessageId) return null
   if (typeof chat_id !== 'string' || !chat_id) return null
   
-  return {
-    event: 'done',
-    data: { message_id: normalizedMessageId, chat_id }
+  const eventData: DoneEvent['data'] = { message_id: normalizedMessageId, chat_id }
+  if (usage !== undefined && isUsageMetadata(usage)) {
+    eventData.usage = usage
   }
+
+  return { event: 'done', data: eventData }
 }
 
 /**

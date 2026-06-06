@@ -1,3 +1,4 @@
+import './AudioTranscriber.css'
 import { useState, useEffect, useCallback } from 'react'
 import { Mic, Copy, Check, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react'
 import { config } from '../../config'

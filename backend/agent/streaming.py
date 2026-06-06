@@ -84,20 +84,26 @@ def _normalize_file_type(raw: str) -> str:
     return mapping.get(raw.lower(), "text") if raw else "text"
 
 
-def emit_done(message_id: str, chat_id: str) -> dict[str, Any]:
+def emit_done(
+    message_id: str,
+    chat_id: str,
+    usage: dict[str, int] | None = None,
+) -> dict[str, Any]:
     """Build a completion SSE payload.
 
     Args:
         message_id: Assistant message identifier.
         chat_id: Chat identifier.
+        usage: Optional usage metadata with prompt_tokens, completion_tokens,
+               total_tokens, generation_time_ms.
 
     Returns:
         dict[str, Any]: SSE event payload.
     """
-    return {
-        "event": "done",
-        "data": {"message_id": message_id, "chat_id": chat_id},
-    }
+    data: dict[str, Any] = {"message_id": message_id, "chat_id": chat_id}
+    if usage is not None:
+        data["usage"] = usage
+    return {"event": "done", "data": data}
 
 
 def emit_error(error: str) -> dict[str, Any]:

@@ -4,6 +4,9 @@ import { Camera, AlertCircle, MessageCircle } from 'lucide-react'
 import { config } from '../../config'
 import type { FileItem } from '../../types/files'
 import type { UseChatSessionsReturn } from '../../hooks/useChatSessions'
+import type { AttachedFile, SupportedMimeType } from '../../types/attachments'
+
+const LARGE_IMAGE_WARNING_BYTES = 10 * 1024 * 1024
 
 interface OCRTabProps {
   sessions: UseChatSessionsReturn
@@ -38,9 +41,48 @@ export function OCRTab({ sessions, onTabChange }: OCRTabProps) {
     return () => controller.abort()
   }, [fetchImages])
 
-  const handleOpenInChat = (file: FileItem) => {
+  const handleOpenInChat = async (file: FileItem) => {
     const session = sessions.createNewSession()
-    sessions.appendUserMessage(session.id, `Tell me about this image: ${file.original_name}`)
+    const message = `Tell me about this image: ${file.original_name}`
+    let attachments: AttachedFile[] | undefined
+
+    try {
+      const url = config.fileEndpoints.fileContent.replace(':fileId', String(file.id))
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`Failed to fetch image (${response.status})`)
+
+      const blob = await response.blob()
+      const fileObject = new File([blob], file.original_name, {
+        type: blob.type || file.file_type || 'image/jpeg',
+      })
+
+      if (fileObject.size === 0) {
+        console.warn('OCR image attachment is empty; falling back to text-only chat message')
+      } else {
+        if (fileObject.size > LARGE_IMAGE_WARNING_BYTES) {
+          console.warn(`OCR image attachment is larger than 10MB: ${fileObject.size} bytes`)
+        }
+
+        attachments = [{
+          id: `ocr-${file.id}`,
+          backendFileId: String(file.id),
+          file: fileObject,
+          metadata: {
+            name: fileObject.name,
+            size: fileObject.size,
+            type: fileObject.type as SupportedMimeType,
+            lastModified: new Date(fileObject.lastModified),
+          },
+          status: 'uploaded',
+          progress: 100,
+          objectUrl: URL.createObjectURL(fileObject),
+        }]
+      }
+    } catch (err) {
+      console.warn('Failed to attach OCR image; falling back to text-only chat message', err)
+    }
+
+    sessions.appendUserMessage(session.id, message, attachments)
     onTabChange('chat')
   }
 
