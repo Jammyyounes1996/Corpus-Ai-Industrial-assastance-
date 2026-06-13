@@ -42,6 +42,10 @@ class _AsyncGen:
         return self._tokens.pop(0)
 
 
+def _chat_chunks(*parts):
+    return _AsyncGen([{"content": part} for part in parts])
+
+
 def _mock_settings():
     s = MagicMock()
     s.RERANKER_ENABLED = False
@@ -80,6 +84,29 @@ async def test_context_general_mode_clears_sources():
     assert result["sources"] == []
     assert result["retrieved_context"] == ""
     assert result["no_match_message_type"] == ""
+
+
+@pytest.mark.asyncio
+async def test_context_general_mode_keeps_ocr_only_context():
+    state = _base_state(
+        answer_mode="general",
+        routes=["ocr"],
+        retrieval_provider="ocr",
+        mode_decision="image_attachment_ocr",
+        ocr_called=True,
+        ocr_results=[
+            {
+                "content": "PUMP-101\nRUNNING",
+                "file_id": "img-1",
+                "file_name": "panel.png",
+                "score": 1.0,
+            }
+        ],
+    )
+    result = await context_synthesis_node(state)
+    assert result["prompt_mode"] == "GROUNDED_RAG"
+    assert result["retrieved_context"] == "PUMP-101\nRUNNING"
+    assert result["sources"][0]["type"] == "ocr"
 
 
 # ── context.py: groundx mode ──
@@ -189,6 +216,7 @@ async def test_answer_groundx_no_match_does_not_call_llm():
     with patch("backend.agent.nodes.answer.OllamaClient") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.generate_stream = AsyncMock()
+        mock_client.chat_stream = mock_client.generate_stream
         mock_client_cls.return_value = mock_client
         state = _base_state(
             prompt_mode="CONSERVATIVE_NO_SOURCE",
@@ -213,6 +241,7 @@ async def test_answer_audio_no_match_does_not_call_llm():
     with patch("backend.agent.nodes.answer.OllamaClient") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.generate_stream = AsyncMock()
+        mock_client.chat_stream = mock_client.generate_stream
         mock_client_cls.return_value = mock_client
         state = _base_state(
             prompt_mode="CONSERVATIVE_NO_SOURCE",
@@ -225,7 +254,8 @@ async def test_answer_audio_no_match_does_not_call_llm():
 @pytest.mark.asyncio
 async def test_answer_general_mode_calls_llm_without_context():
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["Hello", " world"]))
+    mock_client.generate_stream = MagicMock()
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks("Hello", " world"))
 
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -235,15 +265,16 @@ async def test_answer_general_mode_calls_llm_without_context():
         )
         await answer_node(state)
 
-    mock_client.generate_stream.assert_called_once()
-    call_kwargs = mock_client.generate_stream.call_args.kwargs
+    mock_client.chat_stream.assert_called_once()
+    call_kwargs = mock_client.chat_stream.call_args.kwargs
     assert "Retrieved Context" not in call_kwargs.get("system", "")
 
 
 @pytest.mark.asyncio
 async def test_answer_grounded_rag_does_not_fallback_to_general():
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["Based on document..."]))
+    mock_client.generate_stream = MagicMock()
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks("Based on document..."))
 
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -253,9 +284,27 @@ async def test_answer_grounded_rag_does_not_fallback_to_general():
         )
         await answer_node(state)
 
-    call_kwargs = mock_client.generate_stream.call_args.kwargs
+    call_kwargs = mock_client.chat_stream.call_args.kwargs
     system_prompt = call_kwargs.get("system", "")
     assert "RETRIEVED CONTEXT" in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_answer_ocr_only_returns_extracted_text_without_llm():
+    with patch("backend.agent.nodes.answer.OllamaClient") as mock_client_cls:
+        state = _base_state(
+            answer_mode="general",
+            routes=["ocr"],
+            retrieval_provider="ocr",
+            mode_decision="image_attachment_ocr",
+            prompt_mode="GROUNDED_RAG",
+            retrieved_context="PUMP-101\nRUNNING",
+            ocr_results=[{"content": "PUMP-101\nRUNNING", "file_name": "panel.png"}],
+        )
+        result = await answer_node(state)
+
+    assert result["answer"] == "PUMP-101\nRUNNING"
+    mock_client_cls.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -325,7 +374,8 @@ async def test_groundx_mode_llm_hedge_response_replaced_with_arabic_message():
         "knowledge, I can do that."
     )
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["YES"]), _AsyncGen([hedge_response])])
+    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["YES"]))
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks(hedge_response))
     queue = asyncio.Queue()
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -343,8 +393,8 @@ async def test_groundx_mode_llm_hedge_response_replaced_with_arabic_message():
     source_index = next(i for i, event in enumerate(events) if event.get("type") == "sources")
     message_index = next(
         i for i, event in enumerate(events)
-        if event.get("type") == "token"
-        and event["data"]["data"]["token"] == "لا توجد معلومات كافية في GroundX للإجابة على هذا السؤال."
+        if event.get("type") == "answer_delta"
+        and event["data"]["data"]["delta"] == "لا توجد معلومات كافية في GroundX للإجابة على هذا السؤال."
     )
     source_events = [event for event in events if event.get("type") == "sources"]
     assert source_index < message_index
@@ -356,7 +406,8 @@ async def test_groundx_mode_llm_hedge_response_replaced_with_arabic_message():
 async def test_hedge_detection_catches_isnt_used_specifically():
     hedge_response = "the term computing facilities isn't used specifically in this context"
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["YES"]), _AsyncGen([hedge_response])])
+    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["YES"]))
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks(hedge_response))
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
             prompt_mode="GROUNDED_RAG",
@@ -375,7 +426,8 @@ async def test_hedge_detection_catches_isnt_used_specifically():
 async def test_hedge_detection_catches_context_does_not():
     hedge_response = "the provided context does not contain information about computing facilities"
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["YES"]), _AsyncGen([hedge_response])])
+    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["YES"]))
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks(hedge_response))
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
             prompt_mode="GROUNDED_RAG",
@@ -397,7 +449,8 @@ async def test_audio_mode_llm_hedge_response_replaced_with_arabic_message():
         "If you would like, I can use general knowledge."
     )
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["YES"]), _AsyncGen([hedge_response])])
+    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["YES"]))
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks(hedge_response))
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
             prompt_mode="GROUNDED_RAG",
@@ -416,6 +469,7 @@ async def test_audio_mode_llm_hedge_response_replaced_with_arabic_message():
 async def test_groundx_audio_question_classifier_no_emits_empty_sources_then_arabic_message():
     mock_client = MagicMock()
     mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["NO"]))
+    mock_client.chat_stream = mock_client.generate_stream
     queue = asyncio.Queue()
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -440,9 +494,9 @@ async def test_groundx_audio_question_classifier_no_emits_empty_sources_then_ara
     assert result["sources"] == []
     assert result["no_match_message_type"] == "groundx_no_match"
     assert mock_client.generate_stream.call_count == 1
-    assert _event_types(events) == ["thinking", "sources", "token", "done"]
+    assert _event_types(events) == ["workflow", "sources", "answer_delta", "done"]
     assert events[1]["data"]["data"]["sources"] == []
-    assert events[2]["data"]["data"]["token"] == result["answer"]
+    assert events[2]["data"]["data"]["delta"] == result["answer"]
 
 
 @pytest.mark.asyncio
@@ -450,6 +504,7 @@ async def test_audio_pdf_question_classifier_rejects_before_missed_hedge_phrase_
     hedge_response = "the retrieved context does not explicitly mention the requested PDF procedure"
     mock_client = MagicMock()
     mock_client.generate_stream = MagicMock(return_value=_AsyncGen([hedge_response]))
+    mock_client.chat_stream = MagicMock()
     queue = asyncio.Queue()
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -474,15 +529,16 @@ async def test_audio_pdf_question_classifier_rejects_before_missed_hedge_phrase_
     assert result["sources"] == []
     assert result["no_match_message_type"] == "audio_no_match"
     assert mock_client.generate_stream.call_count == 1
-    assert _event_types(events) == ["thinking", "sources", "token", "done"]
+    assert _event_types(events) == ["workflow", "sources", "answer_delta", "done"]
     assert events[1]["data"]["data"]["sources"] == []
-    assert events[2]["data"]["data"]["token"] == result["answer"]
+    assert events[2]["data"]["data"]["delta"] == result["answer"]
 
 
 @pytest.mark.asyncio
 async def test_groundx_pdf_question_classifier_yes_emits_grounded_answer_and_pdf_sources():
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["YES"]), _AsyncGen(["Use the valve checklist."])])
+    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["YES"]))
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks("Use the valve checklist."))
     queue = asyncio.Queue()
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -505,16 +561,18 @@ async def test_groundx_pdf_question_classifier_yes_emits_grounded_answer_and_pdf
     events = _drain_queue(queue)
     assert result["answer"] == "Use the valve checklist."
     assert len(result["sources"]) == 1
-    assert mock_client.generate_stream.call_count == 2
-    assert _event_types(events) == ["thinking", "token", "sources", "done"]
-    assert events[1]["data"]["data"]["token"] == result["answer"]
+    assert mock_client.generate_stream.call_count == 1
+    assert mock_client.chat_stream.call_count == 1
+    assert _event_types(events) == ["workflow", "answer_delta", "sources", "done"]
+    assert events[1]["data"]["data"]["delta"] == result["answer"]
     assert events[2]["data"]["data"]["sources"][0]["file_type"] == "pdf"
 
 
 @pytest.mark.asyncio
 async def test_audio_question_classifier_yes_emits_grounded_answer_and_audio_source():
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["YES"]), _AsyncGen(["The trip was caused by vibration."])])
+    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["YES"]))
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks("The trip was caused by vibration."))
     queue = asyncio.Queue()
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -537,16 +595,18 @@ async def test_audio_question_classifier_yes_emits_grounded_answer_and_audio_sou
     events = _drain_queue(queue)
     assert result["answer"] == "The trip was caused by vibration."
     assert len(result["sources"]) == 1
-    assert mock_client.generate_stream.call_count == 2
-    assert _event_types(events) == ["thinking", "token", "sources", "done"]
-    assert events[1]["data"]["data"]["token"] == result["answer"]
+    assert mock_client.generate_stream.call_count == 1
+    assert mock_client.chat_stream.call_count == 1
+    assert _event_types(events) == ["workflow", "answer_delta", "sources", "done"]
+    assert events[1]["data"]["data"]["delta"] == result["answer"]
     assert events[2]["data"]["data"]["sources"][0]["file_type"] == "audio"
 
 
 @pytest.mark.asyncio
 async def test_general_mode_emits_general_answer_without_sources():
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["General answer."]))
+    mock_client.generate_stream = MagicMock()
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks("General answer."))
     queue = asyncio.Queue()
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -559,8 +619,9 @@ async def test_general_mode_emits_general_answer_without_sources():
 
     events = _drain_queue(queue)
     assert result["answer"] == "General answer."
-    assert mock_client.generate_stream.call_count == 1
-    assert _event_types(events) == ["thinking", "token", "done"]
+    assert mock_client.generate_stream.call_count == 0
+    assert mock_client.chat_stream.call_count == 1
+    assert _event_types(events) == ["workflow", "answer_delta", "done"]
     assert [event for event in events if event.get("type") == "sources"] == []
 
 
@@ -571,7 +632,8 @@ async def test_classifier_yes_for_semantic_relevance():
         "Tindall, and Perth, and is being integrated into the US kill chain."
     )
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["YES"]), _AsyncGen(["Australia hosts US bases."])])
+    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["YES"]))
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks("Australia hosts US bases."))
     queue = asyncio.Queue()
 
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
@@ -595,14 +657,16 @@ async def test_classifier_yes_for_semantic_relevance():
     events = _drain_queue(queue)
     assert result["answer"] == "Australia hosts US bases."
     assert result["sources"][0]["file_type"] == "audio"
-    assert mock_client.generate_stream.call_count == 2
-    assert _event_types(events) == ["thinking", "token", "sources", "done"]
+    assert mock_client.generate_stream.call_count == 1
+    assert mock_client.chat_stream.call_count == 1
+    assert _event_types(events) == ["workflow", "answer_delta", "sources", "done"]
 
 
 @pytest.mark.asyncio
 async def test_classifier_no_override_by_high_score():
     mock_client = MagicMock()
     mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["NO"]), _AsyncGen(["High-score grounded answer."])])
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks("High-score grounded answer."))
 
     with (
         patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client),
@@ -620,7 +684,8 @@ async def test_classifier_no_override_by_high_score():
         result = await answer_node(state)
 
     assert result["answer"] == "High-score grounded answer."
-    assert mock_client.generate_stream.call_count == 2
+    assert mock_client.generate_stream.call_count == 1
+    assert mock_client.chat_stream.call_count == 1
     assert any(
         call.args and "CLASSIFIER_OVERRIDE_BY_SCORE max_score=" in call.args[0]
         for call in mock_log_info.call_args_list
@@ -631,6 +696,7 @@ async def test_classifier_no_override_by_high_score():
 async def test_classifier_no_stays_no_when_score_low():
     mock_client = MagicMock()
     mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["NO"]))
+    mock_client.chat_stream = mock_client.generate_stream
 
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(
@@ -658,7 +724,8 @@ async def test_classifier_audio_question_about_us_protection_returns_yes():
         "the US military kill chain."
     )
     mock_client = MagicMock()
-    mock_client.generate_stream = MagicMock(side_effect=[_AsyncGen(["YES"]), _AsyncGen(["It links Australia to US bases."])])
+    mock_client.generate_stream = MagicMock(return_value=_AsyncGen(["YES"]))
+    mock_client.chat_stream = MagicMock(return_value=_chat_chunks("It links Australia to US bases."))
 
     with patch("backend.agent.nodes.answer.OllamaClient", return_value=mock_client):
         state = _base_state(

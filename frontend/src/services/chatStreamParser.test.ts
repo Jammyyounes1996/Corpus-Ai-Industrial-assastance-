@@ -223,29 +223,28 @@ data: {"type": "router", "content": "Routing", "timestamp": "2024-01-01T00:00:00
       })
     })
 
-    it('should generate fallback step_id when missing', () => {
-      const chunk = `event: thinking_step
-data: {"type": "qdrant_retrieve", "content": "Searching", "timestamp": "2024-01-01T00:00:00Z"}
+    it('should accept valid thinking delta events', () => {
+      const chunk = `event: thinking_delta
+data: {"delta": "Searching", "elapsed_ms": 1200}
 
-event: thinking_step
-data: {"type": "qdrant_retrieve", "content": "Searching", "timestamp": "2024-01-01T00:00:00Z"}`
+event: thinking_delta
+data: {"delta": " more", "elapsed_ms": 1500}`
       const result = parseSSEFrame(chunk)
       expect(result.events).toHaveLength(2)
       expect(result.events[0]).toMatchObject({
-        event: 'thinking_step',
+        event: 'thinking_delta',
         data: {
-          type: 'qdrant_retrieve',
-          content: 'Searching',
-          timestamp: '2024-01-01T00:00:00Z'
+          delta: 'Searching',
+          elapsed_ms: 1200
         }
       })
-      expect(result.events[1]).toMatchObject(result.events[0])
-
-      const firstStep = result.events[0]
-      if (firstStep.event !== 'thinking_step') {
-        throw new Error('expected thinking_step event')
-      }
-      expect(firstStep.data.step_id).toMatch(/^step_[a-z0-9]+$/)
+      expect(result.events[1]).toMatchObject({
+        event: 'thinking_delta',
+        data: {
+          delta: ' more',
+          elapsed_ms: 1500
+        }
+      })
     })
 
     it('should accept valid sources events', () => {

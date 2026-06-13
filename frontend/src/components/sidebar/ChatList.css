@@ -1,12 +1,9 @@
-/* Chat List Styles */
-
 .chat-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-/* Chat item */
 .chat-item {
   display: flex;
   align-items: center;
@@ -18,25 +15,23 @@
 }
 
 .chat-item:hover {
-  background-color: rgba(232, 222, 212, 0.4);
+  background-color: rgba(15, 23, 42, 0.05);
 }
 
 .chat-item.active {
-  background-color: var(--surface-active);
-  border-color: var(--color-primary-200);
-  box-shadow: var(--shadow-sm);
+  background-color: rgba(232, 119, 74, 0.1);
+  border-color: rgba(232, 119, 74, 0.15);
 }
 
 .chat-item.active .chat-title {
-  color: var(--color-primary-700);
+  color: #e8774a;
   font-weight: var(--font-weight-semibold);
 }
 
 .chat-item.active .chat-time {
-  color: var(--color-primary-600);
+  color: #94a3b8;
 }
 
-/* Chat item content */
 .chat-item-content {
   flex: 1;
   min-width: 0;
@@ -45,7 +40,7 @@
 .chat-title {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  color: #0f172a;
   margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
@@ -54,41 +49,39 @@
 
 .chat-time {
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  color: #94a3b8;
 }
 
-/* Chat preview */
 .chat-preview {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: #64748b;
   margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Empty state */
 .empty-state {
   text-align: center;
   padding: var(--spacing-2xl) var(--spacing-lg);
-  color: var(--text-muted);
+  color: #94a3b8;
 }
 
 .empty-state-icon {
   font-size: var(--font-size-3xl);
   margin-bottom: var(--spacing-md);
-  opacity: 0.6;
+  opacity: 0.4;
 }
 
 .empty-state-title {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-secondary);
+  color: #64748b;
   margin-bottom: var(--spacing-xs);
 }
 
 .empty-state-description {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: #94a3b8;
   line-height: var(--line-height-relaxed);
 }

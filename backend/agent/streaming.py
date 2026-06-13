@@ -8,7 +8,7 @@ def emit_thinking_step(
     content: str,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a thinking step SSE payload.
+    """Build a workflow step SSE payload.
 
     Args:
         step_type: Thinking step category.
@@ -18,19 +18,30 @@ def emit_thinking_step(
     Returns:
         dict[str, Any]: SSE event payload.
     """
+    metadata = metadata or {}
     return {
-        "event": "thinking_step",
+        "event": "workflow_step",
         "data": {
-            "type": step_type,
-            "content": content,
-            "metadata": metadata or {},
+            "type": "workflow_step",
+            "node": step_type,
+            "status": metadata.get("status", "in_progress"),
+            "label": content,
+            "duration_ms": metadata.get("duration_ms"),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     }
 
 
+def emit_thinking_delta(delta: str, elapsed_ms: int | None = None) -> dict[str, Any]:
+    """Build a model thinking SSE payload."""
+    data: dict[str, Any] = {"delta": delta}
+    if elapsed_ms is not None:
+        data["elapsed_ms"] = elapsed_ms
+    return {"event": "thinking_delta", "data": data}
+
+
 def emit_token(token: str) -> dict[str, Any]:
-    """Build a token SSE payload.
+    """Build an answer delta SSE payload.
 
     Args:
         token: Streamed token text.
@@ -39,8 +50,8 @@ def emit_token(token: str) -> dict[str, Any]:
         dict[str, Any]: SSE event payload.
     """
     return {
-        "event": "token",
-        "data": {"token": token},
+        "event": "answer_delta",
+        "data": {"delta": token},
     }
 
 

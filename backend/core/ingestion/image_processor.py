@@ -84,7 +84,7 @@ class ImageProcessor:
 
         try:
             extracted_text = await self._extract_text(file_content, content_type)
-            model_used = self._settings.OLLAMA_MODEL
+            model_used = self._settings.OCR_MODEL_NAME
 
             await crud.create_ocr_result(
                 session,
@@ -140,7 +140,7 @@ class ImageProcessor:
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
 
         payload = {
-            "model": self._settings.OLLAMA_MODEL,
+            "model": self._settings.OCR_MODEL_NAME,
             "prompt": "Extract all text from this image.",
             "images": [b64_image],
             "stream": False,

@@ -23,6 +23,8 @@ export function AppShell({ activeTab, onTabChange, activeSession, sessions }: Ap
         onSelectSession={sessions.setActiveSession}
         searchQuery={sessions.searchQuery}
         onSearchChange={sessions.setSearchQuery}
+        activeTab={activeTab}
+        onTabChange={onTabChange}
       />
       
       <div className="workspace">

@@ -9,10 +9,10 @@ import {
   ChatStreamEvent,
   DoneEvent,
   ErrorEvent,
+  AnswerDeltaEvent,
   SourceReference,
   SourcesEvent,
-  ThinkingStepEvent,
-  TokenEvent,
+  ThinkingDeltaEvent,
   UsageMetadata
 } from '../types/chat'
 
@@ -123,11 +123,16 @@ function createEvent(eventName: string, data: string): ChatStreamEvent | null {
     const parsedData = tryParseJSON(data)
     
     switch (eventName) {
+      case 'answer_delta':
       case 'token':
-        return validateTokenEvent(parsedData)
+        return validateAnswerDeltaEvent(parsedData)
         
+      case 'thinking_delta':
+        return validateThinkingDeltaEvent(parsedData)
+
+      case 'workflow_step':
       case 'thinking_step':
-        return validateThinkingStepEvent(parsedData)
+        return null
         
       case 'sources':
         return validateSourcesEvent(parsedData)
@@ -198,20 +203,6 @@ function normalizeMessageId(value: unknown): string | null {
   return null
 }
 
-function generateFallbackStepId(data: {
-  type: string
-  content: string
-  timestamp: string
-}): string {
-  const raw = `${data.type}|${data.timestamp}|${data.content}`
-  let hash = 5381
-  for (let i = 0; i < raw.length; i += 1) {
-    hash = (hash * 33) ^ raw.charCodeAt(i)
-  }
-  const unsignedHash = hash >>> 0
-  return `step_${unsignedHash.toString(36)}`
-}
-
 /**
   * Try to parse data as JSON, throw error if invalid
   */
@@ -231,63 +222,63 @@ function tryParseJSON(data: string): unknown {
 /**
   * Validate and create a TokenEvent
   */
-function validateTokenEvent(data: unknown): TokenEvent | null {
+function validateAnswerDeltaEvent(data: unknown): AnswerDeltaEvent | null {
   // Handle both string data and object data
   if (typeof data === 'string') {
     if (!data.trim()) return null
     return {
-      event: 'token',
-      data: { token: data }
+      event: 'answer_delta',
+      data: { delta: data }
     }
   }
   
   const parsedData = parseRecord(data)
   if (!parsedData) return null
   
-  const { token, message_id } = parsedData
+  const deltaValue = typeof parsedData.delta === 'string' ? parsedData.delta : parsedData.token
+  const { message_id } = parsedData
   
-  if (typeof token !== 'string' || !token) return null
+  if (typeof deltaValue !== 'string' || !deltaValue) return null
   if (message_id !== undefined && normalizeMessageId(message_id) === null) return null
   
-  const eventData: TokenEvent['data'] = { token }
+  const eventData: AnswerDeltaEvent['data'] = { delta: deltaValue }
   if (message_id !== undefined) {
     const normalizedId = normalizeMessageId(message_id)
     if (normalizedId) eventData.message_id = normalizedId
   }
   
-  return { event: 'token', data: eventData }
+  return { event: 'answer_delta', data: eventData }
 }
 
 /**
   * Validate and create a ThinkingStepEvent
   */
-function validateThinkingStepEvent(data: unknown): ThinkingStepEvent | null {
+function validateThinkingDeltaEvent(data: unknown): ThinkingDeltaEvent | null {
   // Handle both string data and object data
+  if (typeof data === 'string') {
+    if (!data.trim()) return null
+    return {
+      event: 'thinking_delta',
+      data: { delta: data }
+    }
+  }
+
   const parsedData = parseRecord(data)
   if (!parsedData) return null
-  
-  const { type, content, timestamp, step_id } = parsedData
 
-  if (typeof type !== 'string' || !type) return null
-  if (typeof content !== 'string' || !content) return null
-  if (typeof timestamp !== 'string' || !timestamp) return null
-
-  let normalizedStepId: string
-  if (typeof step_id === 'string' && step_id) {
-    normalizedStepId = step_id
-  } else {
-    normalizedStepId = generateFallbackStepId({ type, content, timestamp })
+  const { delta, elapsed_ms } = parsedData
+  if (typeof delta !== 'string' || !delta) return null
+  if (elapsed_ms !== undefined && (typeof elapsed_ms !== 'number' || !Number.isFinite(elapsed_ms))) {
+    return null
   }
-  
+
   return {
-    event: 'thinking_step',
-      data: {
-        type,
-        content,
-        timestamp,
-        step_id: normalizedStepId
-      }
+    event: 'thinking_delta',
+    data: {
+      delta,
+      ...(typeof elapsed_ms === 'number' ? { elapsed_ms } : {})
     }
+  }
 }
 
 /**

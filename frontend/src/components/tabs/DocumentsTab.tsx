@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { config } from '../../config'
 import type { FileItem } from '../../types/files'
-import { uploadFile } from '../../services/fileUploadService'
+import { uploadFileWithProgress } from '../../services/fileUploadService'
 
 type FileFilter = 'all' | 'pdf' | 'audio' | 'image'
 type SortOption = 'date_desc' | 'name' | 'date_asc'
@@ -41,12 +41,29 @@ function getStatusColor(status: string): string {
   switch (status) {
     case 'indexed':
       return 'var(--color-success)'
+    case 'queued':
     case 'processing':
       return 'var(--color-warning)'
     case 'failed':
       return 'var(--color-error)'
     default:
       return 'var(--text-muted)'
+  }
+}
+
+function getStatusLabel(file: FileItem): string {
+  if (file.status_message) return file.status_message
+  switch (file.indexing_status) {
+    case 'queued':
+      return 'Queued for GroundX indexing'
+    case 'processing':
+      return 'Processing in GroundX'
+    case 'indexed':
+      return 'Ready for GroundX retrieval'
+    case 'failed':
+      return 'GroundX indexing failed'
+    default:
+      return file.indexing_status
   }
 }
 
@@ -76,9 +93,78 @@ export function DocumentsTab() {
   const [error, setError] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<FileFilter>('all')
   const [sortBy, setSortBy] = useState<SortOption>('date_desc')
-  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map())
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pollingTimeoutsRef = useRef<Map<string, number>>(new Map())
+
+  const stopPolling = useCallback((fileId: string) => {
+    const timeoutId = pollingTimeoutsRef.current.get(fileId)
+    if (timeoutId) {
+      window.clearTimeout(timeoutId)
+      pollingTimeoutsRef.current.delete(fileId)
+    }
+  }, [])
+
+  const updateFileInState = useCallback((nextFile: FileItem) => {
+    setFiles((prev) => {
+      const existingIndex = prev.findIndex((file) => file.id === nextFile.id)
+      if (existingIndex === -1) return prev
+      const next = [...prev]
+      next[existingIndex] = { ...prev[existingIndex], ...nextFile }
+      return next
+    })
+  }, [])
+
+  const pollFileStatus = useCallback(async (fileId: string) => {
+    try {
+      const endpoint = config.fileEndpoints.fileStatus.replace(':fileId', fileId)
+      const res = await fetch(endpoint)
+      if (!res.ok) throw new Error(`Failed to fetch file status (${res.status})`)
+      const data = await res.json()
+      updateFileInState({
+        id: data.file_id,
+        original_name: data.original_name,
+        file_type: data.file_type,
+        size_bytes: 0,
+        indexing_status: data.indexing_status,
+        status_message: data.status_message,
+        error_message: data.error_message,
+        groundx_process_id: data.groundx_process_id,
+        groundx_document_id: data.groundx_document_id,
+        groundx_bucket_id: data.groundx_bucket_id,
+        ready_for_groundx_retrieval: data.ready_for_groundx_retrieval,
+        created_at: null,
+      } as FileItem)
+
+      if (data.indexing_status === 'queued' || data.indexing_status === 'processing') {
+        stopPolling(fileId)
+        const timeoutId = window.setTimeout(() => {
+          void pollFileStatus(fileId)
+        }, 3000)
+        pollingTimeoutsRef.current.set(fileId, timeoutId)
+        return
+      }
+
+      stopPolling(fileId)
+    } catch {
+      stopPolling(fileId)
+    }
+  }, [stopPolling, updateFileInState])
+
+  const ensurePolling = useCallback((file: FileItem) => {
+    if (file.file_type !== 'pdf') return
+    if (file.indexing_status !== 'queued' && file.indexing_status !== 'processing') {
+      stopPolling(file.id)
+      return
+    }
+    if (pollingTimeoutsRef.current.has(file.id)) return
+    const timeoutId = window.setTimeout(() => {
+      void pollFileStatus(file.id)
+    }, 1500)
+    pollingTimeoutsRef.current.set(file.id, timeoutId)
+  }, [pollFileStatus, stopPolling])
 
   const fetchFiles = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -93,23 +179,29 @@ export function DocumentsTab() {
       const res = await fetch(`${config.fileEndpoints.listFiles}?${params}`, { signal })
       if (!res.ok) throw new Error(`Failed to fetch files (${res.status})`)
       const data = await res.json()
-      setFiles(data.files || [])
+      const nextFiles = data.files || []
+      setFiles(nextFiles)
       setTotal(data.total || 0)
+      nextFiles.forEach((file: FileItem) => ensurePolling(file))
     } catch (err: any) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err.message || 'Failed to load documents')
     } finally {
       setLoading(false)
     }
-  }, [activeFilter, sortBy])
+  }, [activeFilter, sortBy, ensurePolling])
 
   useEffect(() => {
     const controller = new AbortController()
     fetchFiles(controller.signal)
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+      pollingTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId))
+      pollingTimeoutsRef.current.clear()
+    }
   }, [fetchFiles])
 
-  const handleDelete = async (fileId: number) => {
+  const handleDelete = async (fileId: string) => {
     if (!window.confirm('Delete this file? This action cannot be undone.')) return
     setDeletingId(fileId)
     try {
@@ -129,15 +221,40 @@ export function DocumentsTab() {
     const selected = e.target.files
     if (!selected || selected.length === 0) return
     setUploading(true)
+    const fileList = Array.from(selected)
     try {
-      for (const file of Array.from(selected)) {
-        await uploadFile(file)
+      for (const file of fileList) {
+        setUploadProgress((prev) => new Map(prev).set(file.name, 0))
+        const uploadResult = await uploadFileWithProgress(file, (percent) => {
+          setUploadProgress((prev) => new Map(prev).set(file.name, percent))
+        })
+        await fetchFiles()
+        if (uploadResult.file_id) {
+          const uploadedFile = files.find((existing) => existing.id === uploadResult.file_id)
+          ensurePolling(uploadedFile || {
+            id: uploadResult.file_id,
+            original_name: uploadResult.filename,
+            file_type: uploadResult.file_type,
+            size_bytes: uploadResult.size,
+            indexing_status: uploadResult.indexing_status || 'queued',
+            status_message: uploadResult.status_message,
+            error_message: null,
+            groundx_process_id: uploadResult.groundx_process_id,
+            groundx_bucket_id: uploadResult.groundx_bucket_id,
+            created_at: uploadResult.upload_timestamp.toISOString(),
+          } as FileItem)
+        }
+        setUploadProgress((prev) => {
+          const next = new Map(prev)
+          next.delete(file.name)
+          return next
+        })
       }
-      await fetchFiles()
     } catch (err: any) {
       alert(err.message || 'Upload failed')
     } finally {
       setUploading(false)
+      setUploadProgress(new Map())
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -174,7 +291,7 @@ export function DocumentsTab() {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.mp3,.wav,.ogg,.jpg,.jpeg,.png,.webp"
+            accept=".pdf,.mp3,.wav,.ogg,.m4a,.webm,.jpg,.jpeg,.png,.webp"
             style={{ display: 'none' }}
             onChange={handleUpload}
           />
@@ -204,7 +321,29 @@ export function DocumentsTab() {
         </div>
       )}
 
-      {!loading && !error && files.length === 0 && (
+      {uploadProgress.size > 0 && (
+        <div className="upload-progress-section">
+          {Array.from(uploadProgress.entries()).map(([name, percent]) => (
+            <div key={name} className="upload-progress-card">
+              <div className="upload-progress-info">
+                <Upload size={16} />
+                <span className="upload-progress-name" title={name}>{name}</span>
+                <span className="upload-progress-percent">
+                  {percent < 100 ? `Uploading... ${percent}%` : 'Processing'}
+                </span>
+              </div>
+              <div className="upload-progress-bar-track">
+                <div
+                  className="upload-progress-bar-fill"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && !error && files.length === 0 && uploadProgress.size === 0 && (
         <div className="documents-empty">
           <FolderOpen size={48} />
           <p>No documents yet. Upload your first PDF, audio, or image.</p>
@@ -238,8 +377,11 @@ export function DocumentsTab() {
                   className="file-card-status"
                   style={{ color: getStatusColor(file.indexing_status) }}
                 >
-                  {file.indexing_status}
+                  {getStatusLabel(file)}
                 </span>
+                {file.error_message && file.indexing_status === 'failed' && (
+                  <span className="file-card-meta">{file.error_message}</span>
+                )}
               </div>
             ))}
           </div>

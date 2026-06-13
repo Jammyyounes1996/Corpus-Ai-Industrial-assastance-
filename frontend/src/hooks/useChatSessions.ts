@@ -5,7 +5,7 @@
 */
 
 import { useState, useCallback, useRef } from 'react'
-import { ChatSession, ChatStreamEvent, Message, ThinkingStep, SourceReference, UsageMetadata } from '../types/chat'
+import { ChatSession, ChatStreamEvent, Message, SourceReference, UsageMetadata } from '../types/chat'
 import { AttachedFile } from '../types/attachments'
 import { generateChatTitle } from '../services/timeService'
 
@@ -25,7 +25,7 @@ export interface UseChatSessionsReturn {
   createAssistantPlaceholder: (sessionId: string, content: string) => string
   appendToken: (sessionId: string, token: string) => void
   setSources: (sessionId: string, messageId: string, sources: SourceReference[]) => void
-  setThinkingSteps: (sessionId: string, messageId: string, steps: ThinkingStep[]) => void
+  appendThinking: (sessionId: string, messageId: string, delta: string, elapsedMs?: number) => void
   completeMessage: (sessionId: string, messageId: string, usage?: UsageMetadata) => void
   failMessage: (sessionId: string, messageId: string, error?: string) => void
   cancelMessage: (sessionId: string, messageId: string) => void
@@ -229,15 +229,19 @@ export function useChatSessions(): UseChatSessionsReturn {
     )
   }, [])
 
-  const setThinkingSteps = useCallback((sessionId: string, messageId: string, steps: ThinkingStep[]) => {
+const appendThinking = useCallback((sessionId: string, messageId: string, delta: string, elapsedMs?: number) => {
     setSessions(prev => 
       prev.map(session => {
         if (session.id !== sessionId) return session
 
         const updatedMessages = session.messages.map(msg => {
-          if (msg.id === messageId) {
-            return { ...msg, thinkingSteps: steps }
+        if (msg.id === messageId) {
+          return {
+            ...msg,
+            thinkingText: `${msg.thinkingText ?? ''}${delta}`,
+            ...(typeof elapsedMs === 'number' ? { thinkingElapsedMs: elapsedMs } : {})
           }
+        }
           return msg
         })
 
@@ -311,30 +315,28 @@ export function useChatSessions(): UseChatSessionsReturn {
     )
   }, [])
 
-  const createStreamEventHandler = useCallback((sessionId: string) => {
-    const accumulatedSteps: ThinkingStep[] = []
+const createStreamEventHandler = useCallback((sessionId: string) => {
+  let lastMessageId: string | null = null
 
     return (event: ChatStreamEvent) => {
-      const messageId = streamingMessageIdRef.current
+    const messageId = streamingMessageIdRef.current
 
-      switch (event.event) {
-        case 'token':
-          appendToken(sessionId, event.data.token)
-          break
-        case 'thinking_step': {
-          const step: ThinkingStep = {
-            id: event.data.step_id,
-            type: event.data.type,
-            content: event.data.content,
-            timestamp: new Date(event.data.timestamp),
-            status: 'received'
-          }
-          accumulatedSteps.push(step)
-          if (messageId) {
-            setThinkingSteps(sessionId, messageId, [...accumulatedSteps])
-          }
-          break
+    if (messageId !== lastMessageId) {
+      lastMessageId = messageId
+    }
+
+    switch (event.event) {
+      case 'answer_delta':
+        appendToken(sessionId, event.data.delta)
+        break
+      case 'thinking_delta': {
+        if (messageId) {
+          appendThinking(sessionId, messageId, event.data.delta, event.data.elapsed_ms)
         }
+        break
+      }
+      case 'workflow_step':
+        break
         case 'sources':
           if (messageId) {
             setSources(sessionId, messageId, event.data.sources)
@@ -354,7 +356,7 @@ export function useChatSessions(): UseChatSessionsReturn {
           break
       }
     }
-  }, [appendToken, setThinkingSteps, setSources, completeMessage, failMessage])
+}, [appendToken, appendThinking, setSources, completeMessage, failMessage])
 
   const cancelStreamingMessage = useCallback((sessionId: string) => {
     const messageId = streamingMessageIdRef.current
@@ -380,7 +382,7 @@ export function useChatSessions(): UseChatSessionsReturn {
     createAssistantPlaceholder,
     appendToken,
     setSources,
-    setThinkingSteps,
+    appendThinking,
     completeMessage,
     failMessage,
     cancelMessage,

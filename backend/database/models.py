@@ -104,8 +104,12 @@ class File(Base):
     disk_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     groundx_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    groundx_process_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    groundx_document_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    groundx_bucket_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     qdrant_collection: Mapped[str | None] = mapped_column(String(100), nullable=True)
     indexing_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    status_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(timezone.utc),

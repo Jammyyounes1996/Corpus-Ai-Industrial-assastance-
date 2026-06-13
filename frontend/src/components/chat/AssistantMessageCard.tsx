@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { LogoMark } from '../ui/LogoMark'
 import { AlertCircle } from 'lucide-react'
 import { ThinkingCard } from './ThinkingCard'
@@ -6,17 +7,22 @@ import { SourceChips } from './SourceChips'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import type { Message } from '../../types/chat'
 import { formatTimestamp } from '../../services/timeService'
+import { getTextDirection } from '../../utils/textDirection'
 import './AssistantMessageCard.css'
 
 interface AssistantMessageCardProps {
   message: Message
+  onRegenerate?: () => void
 }
 
-export function AssistantMessageCard({ message }: AssistantMessageCardProps) {
+export function AssistantMessageCard({ message, onRegenerate }: AssistantMessageCardProps) {
   const isStreamActive = message.status === 'streaming'
   const isFailed = message.status === 'failed'
   const isCancelled = message.status === 'cancelled'
   const isComplete = message.status === 'complete'
+  const [expanded, setExpanded] = useState(false)
+
+  const dir = getTextDirection(message.content)
 
   return (
     <div
@@ -28,17 +34,26 @@ export function AssistantMessageCard({ message }: AssistantMessageCardProps) {
         <div className="assistant-msg__avatar" aria-hidden="true">
           <LogoMark />
         </div>
-        <span className="assistant-msg__role">Assistant</span>
+        <span className="assistant-msg__role">CORPUS INDUSTRIAL AI AGENT</span>
         <time className="assistant-msg__time" dateTime={message.timestamp.toISOString()}>
           {formatTimestamp(message.timestamp)}
         </time>
       </div>
 
-      {message.thinkingSteps && message.thinkingSteps.length > 0 && (
-        <ThinkingCard steps={message.thinkingSteps} isStreaming={isStreamActive} />
+      {(isStreamActive || message.thinkingText) && (
+        <ThinkingCard
+          content={message.thinkingText ?? ''}
+          elapsedMs={message.thinkingElapsedMs}
+          isStreaming={isStreamActive}
+        />
       )}
 
-      <div className={`assistant-msg__content${isStreamActive ? ' assistant-msg__content--streaming' : ''}`}>
+      <div
+        className={`assistant-msg__content assistant-msg__content--${dir}${
+          isStreamActive ? ' assistant-msg__content--streaming' : ''
+        }${expanded ? ' assistant-msg__content--expanded' : ''}`}
+        dir={dir}
+      >
         {isStreamActive ? (
           <>
             {message.content}
@@ -70,7 +85,12 @@ export function AssistantMessageCard({ message }: AssistantMessageCardProps) {
 
       {isComplete && message.content.trim() && (
         <div className="assistant-msg__actions-wrapper">
-          <AssistantActions content={message.content} />
+          <AssistantActions
+            content={message.content}
+            expanded={expanded}
+            onRegenerate={onRegenerate}
+            onToggleExpand={() => setExpanded((v) => !v)}
+          />
         </div>
       )}
     </div>

@@ -11,13 +11,19 @@ export const config = {
     ingestPdf: '/api/ingest/pdf',
     ingestAudio: '/api/ingest/audio', 
     ingestImage: '/api/ingest/image',
+    ocrPdf: '/api/ingest/ocr-pdf',
     health: '/health'
   },
   
   fileEndpoints: {
     listFiles: '/api/files',
+    fileStatus: '/api/files/:fileId/status',
     fileContent: '/api/files/:fileId/content',
     deleteFile: '/api/files/:fileId',
+  },
+
+  ocrEndpoints: {
+    extract: '/api/ocr/:fileId/extract',
   },
 
   evaluationEndpoints: {

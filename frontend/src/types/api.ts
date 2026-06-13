@@ -21,6 +21,10 @@ export interface UploadResponse {
   file_type: 'pdf' | 'image' | 'audio'
   size: number
   upload_timestamp: Date
+  indexing_status?: string
+  status_message?: string | null
+  groundx_process_id?: string | null
+  groundx_bucket_id?: string | null
 }
 
 export interface UploadErrorResponse {
@@ -38,6 +42,7 @@ export interface StreamRequestBody {
   model?: string
   provider?: string
   answer_mode?: AnswerMode
+  task_type?: string
 }
 
 // Stream events (chat.ts contains more detailed versions)

@@ -75,7 +75,7 @@ export function useChatStream(options: UseChatStreamOptions): UseChatStreamRetur
 
     let tokensStarted = false
     const onEvent = (event: ChatStreamEvent) => {
-      if (event.event === 'token') {
+      if (event.event === 'answer_delta') {
         tokensStarted = true
       }
       optionsRef.current.onEvent(event)

@@ -21,8 +21,8 @@ export function AudioTranscriber() {
   const [files, setFiles] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [expandedId, setExpandedId] = useState<number | null>(null)
-  const [copiedId, setCopiedId] = useState<number | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const fetchAudioFiles = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -47,7 +47,7 @@ export function AudioTranscriber() {
     return () => controller.abort()
   }, [fetchAudioFiles])
 
-  const handleCopy = async (fileId: number, text: string) => {
+  const handleCopy = async (fileId: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text)
       setCopiedId(fileId)

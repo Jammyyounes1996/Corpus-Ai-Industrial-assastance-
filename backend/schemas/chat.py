@@ -133,6 +133,7 @@ class StreamRequest(BaseModel):
     model_name: str = settings.DEFAULT_MODEL_NAME
     attached_files: Optional[list[str]] = []
     answer_mode: Literal["groundx", "audio", "general"] = "general"
+    task_type: Optional[str] = None
 
     @field_validator("attached_files")
     @classmethod

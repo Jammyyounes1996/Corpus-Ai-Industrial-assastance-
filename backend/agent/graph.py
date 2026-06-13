@@ -16,6 +16,7 @@ from backend.agent.nodes.answer import answer_node as answer_node_impl
 from backend.agent.nodes.ocr import ocr_node
 from backend.agent.nodes.qdrant import qdrant_retrieve_node
 from backend.agent.nodes.router import router_node
+from backend.agent.nodes.web_search import web_search_node
 from backend.agent.nodes.context import context_synthesis_node
 from backend.agent.streaming import emit_thinking_step
 from backend.agent.streaming import deduplicate_sources
@@ -35,7 +36,7 @@ def _wrap_node_with_queue(fn, node_name: str, queue: asyncio.Queue):
     async def wrapped(state):
         start = time.perf_counter()
         await queue.put({
-            "type": "thinking",
+                "type": "workflow",
             "data": emit_thinking_step(
                 node_name, f"{node_name} started",
                 {"node": node_name, "status": "in_progress"},
@@ -44,7 +45,7 @@ def _wrap_node_with_queue(fn, node_name: str, queue: asyncio.Queue):
         result = (await fn(state)) if is_coro else fn(state)
         duration_ms = int((time.perf_counter() - start) * 1000)
         await queue.put({
-            "type": "thinking",
+                "type": "workflow",
             "data": emit_thinking_step(
                 node_name, f"{node_name} completed",
                 {"node": node_name, "status": "completed", "duration_ms": duration_ms},
@@ -72,6 +73,8 @@ def _retrieval_route(state: AgentState) -> str:
     routes = state.get("routes", [])
     if not routes:
         return "skip_retrieval"
+    if "ocr" in routes and "qdrant" not in routes and "groundx" not in routes:
+        return "ocr_only"
     return "do_retrieval"
 
 
@@ -90,25 +93,29 @@ def compiled_agent_graph(
 
     ocr_node_with_session = partial(ocr_node, session=session)
     router_node_with_session = partial(router_node, session=session)
+    groundx_node_with_session = partial(groundx_retrieve_node, session=session)
     answer_node_with_queue = partial(answer_node_impl, token_queue=token_queue)
+    web_search_node_with_queue = partial(web_search_node, token_queue=token_queue)
 
     if token_queue is not None:
         graph.add_node("router", _wrap_node_with_queue(router_node_with_session, "router", token_queue))
-        graph.add_node("groundx_retrieve", _wrap_node_with_queue(groundx_retrieve_node, "groundx_retrieve", token_queue))
+        graph.add_node("groundx_retrieve", _wrap_node_with_queue(groundx_node_with_session, "groundx_retrieve", token_queue))
         graph.add_node("qdrant_retrieve", _wrap_node_with_queue(qdrant_retrieve_node, "qdrant_retrieve", token_queue))
         graph.add_node("ocr_retrieve", _wrap_node_with_queue(ocr_node_with_session, "ocr_retrieve", token_queue))
         graph.add_node("ocr_skip", _wrap_node_with_queue(ocr_skip_node, "ocr_skip", token_queue))
         graph.add_node("retrieval_skip", _wrap_node_with_queue(retrieval_skip_node, "retrieval_skip", token_queue))
         graph.add_node("context_synthesis", _wrap_node_with_queue(context_synthesis_node, "context_synthesis", token_queue))
+        graph.add_node("web_search", web_search_node_with_queue)
         graph.add_node("answer_node", answer_node_with_queue)
     else:
         graph.add_node("router", router_node_with_session)
-        graph.add_node("groundx_retrieve", groundx_retrieve_node)
+        graph.add_node("groundx_retrieve", groundx_node_with_session)
         graph.add_node("qdrant_retrieve", qdrant_retrieve_node)
         graph.add_node("ocr_retrieve", ocr_node_with_session)
         graph.add_node("ocr_skip", ocr_skip_node)
         graph.add_node("retrieval_skip", retrieval_skip_node)
         graph.add_node("context_synthesis", context_synthesis_node)
+        graph.add_node("web_search", web_search_node_with_queue)
         graph.add_node("answer_node", answer_node_with_queue)
 
     graph.set_entry_point("router")
@@ -118,6 +125,7 @@ def compiled_agent_graph(
         _retrieval_route,
         {
             "skip_retrieval": "retrieval_skip",
+            "ocr_only": "ocr_retrieve",
             "do_retrieval": "groundx_retrieve",
         },
     )
@@ -138,7 +146,8 @@ def compiled_agent_graph(
     graph.add_edge("ocr_retrieve", "context_synthesis")
     graph.add_edge("ocr_skip", "context_synthesis")
 
-    graph.add_edge("context_synthesis", "answer_node")
+    graph.add_edge("context_synthesis", "web_search")
+    graph.add_edge("web_search", "answer_node")
     graph.add_edge("answer_node", END)
 
     return graph.compile()

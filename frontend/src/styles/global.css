@@ -1,6 +1,5 @@
 /* Global CSS Reset and Base Styles */
 
-/* CSS Reset */
 *,
 *::before,
 *::after {
@@ -34,7 +33,6 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Focus styles */
 :focus {
   outline: 2px solid transparent;
   outline-offset: 2px;
@@ -45,7 +43,6 @@ body {
   outline-offset: 2px;
 }
 
-/* Typography */
 h1, h2, h3, h4, h5, h6 {
   font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-tight);
@@ -78,7 +75,6 @@ a:visited {
   color: var(--color-primary-800);
 }
 
-/* Code */
 code {
   font-family: var(--font-family-mono);
   font-size: 0.875em;
@@ -108,7 +104,6 @@ pre code {
   border-radius: 0;
 }
 
-/* Forms */
 input,
 textarea,
 select {
@@ -128,7 +123,7 @@ textarea:focus,
 select:focus {
   outline: none;
   border-color: var(--color-primary-400);
-  box-shadow: 0 0 0 3px rgba(232, 93, 42, 0.1);
+  box-shadow: 0 0 0 3px rgba(232, 119, 74, 0.08);
 }
 
 button {
@@ -153,7 +148,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Lists */
 ul, ol {
   list-style: none;
   margin: 0;
@@ -164,7 +158,6 @@ li {
   margin-bottom: var(--spacing-sm);
 }
 
-/* Container */
 .container {
   width: 100%;
   max-width: 1280px;
@@ -172,33 +165,27 @@ li {
   padding: 0 var(--spacing-lg);
 }
 
-/* Display utilities */
 .block { display: block; }
 .inline-block { display: inline-block; }
 .inline { display: inline; }
 .hidden { display: none; }
 
-/* Visibility utilities */
 .invisible { visibility: hidden; }
 .visible { visibility: visible; }
 
-/* Overflow utilities */
 .overflow-hidden { overflow: hidden; }
 .overflow-visible { overflow: visible; }
 .overflow-auto { overflow: auto; }
 
-/* Position utilities */
 .static { position: static; }
 .relative { position: relative; }
 .absolute { position: absolute; }
 .fixed { position: fixed; }
 .sticky { position: sticky; }
 
-/* Spacing utilities */
 .m-0 { margin: 0; }
 .p-0 { padding: 0; }
 
-/* Color utilities */
 .text-primary { color: var(--color-primary-600); }
 .text-success { color: var(--color-success-600); }
 .text-warning { color: var(--color-warning-600); }

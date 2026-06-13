@@ -12,6 +12,7 @@ from backend.api.routes.ingest import router as ingest_router
 from backend.api.routes.chat import configure_chat_cors, router as chat_router
 from backend.api.routes.models import router as models_router
 from backend.api.routes.evaluation import router as evaluation_router
+from backend.api.routes.ocr import router as ocr_router
 from backend.config.settings import get_settings
 from backend.database.database import Base, configure_sqlite_pragmas, engine
 from backend.schemas.health import HealthResponse
@@ -63,6 +64,7 @@ app.include_router(ingest_router)
 app.include_router(chat_router)
 app.include_router(models_router)
 app.include_router(evaluation_router)
+app.include_router(ocr_router)
 
 
 @app.exception_handler(Exception)

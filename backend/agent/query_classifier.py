@@ -140,6 +140,47 @@ _DEFINITION_INTENT_AR = re.compile(
 )
 
 
+_SEARCH_TRIGGER_EN = re.compile(
+    r"\b("
+    r"search|look\s+up|find|verify|double\s+check|cross[-\s]?check"
+    r"|updated|update|latest|current|currently|today|news|release\s+notes"
+    r"|references?|citations?|sources?"
+    r"|price|pricing|cost|law|regulation|standard\s+version|api\s+changes?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+_SEARCH_TRIGGER_AR = re.compile(
+    r"ابحث|دور|تحقق|اتاكد|اتأكد|راجع|دبل\s*تشيك|تحقق\s+من"
+    r"|محدث|محد[ثة]ة|أحدث|احدث|حالي|حالياً|حاليا|دلوقتي|اليوم|الآن|الان"
+    r"|مصادر|مرجع|مراجع|سعر|أسعار|اسعار|قانون|لائحة|معيار|إصدار|اصدار",
+    re.IGNORECASE,
+)
+
+
+_SEARCH_TOPIC_EN = re.compile(
+    r"\b("
+    r"price|pricing|cost|standard|spec|regulation|law|api|sdk|release|version"
+    r"|company|role|schedule|news|opc\s*ua|iec|iso\s*\d+"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+_SEARCH_TOPIC_AR = re.compile(
+    r"سعر|اسعار|أسعار|معيار|قياسي|لائحة|قانون|تشريع|إصدار|اصدار|نسخة|إصدار"
+    r"|واجهة\s*برمجة|خبر|أخبار|اخبار|شركة|منصب|جدول|موعد|حالي|أحدث|احدث|OPC\s*UA|IEC|ISO",
+    re.IGNORECASE,
+)
+
+
+_COMPARE_WITH_WEB_EN = re.compile(r"\b(compare\s+with\s+the\s+web|check\s+online|web\s+search)\b", re.IGNORECASE)
+_COMPARE_WITH_WEB_AR = re.compile(r"قارن\s+مع\s+الويب|من\s+الويب|ابحث\s+على\s+الويب|تحقق\s+اونلاين|تحقق\s+عبر\s+الويب", re.IGNORECASE)
+_LOCAL_ONLY_EN = re.compile(r"\b(from|using)\s+the\s+(file|document|attachment)\s+only\b", re.IGNORECASE)
+_LOCAL_ONLY_AR = re.compile(r"من\s+الملف\s+فقط|من\s+المرفق\s+فقط|اعتمد\s+على\s+الملف\s+فقط|جاوب\s+من\s+الملف\s+فقط", re.IGNORECASE)
+
+
 def _has_doc_intent(query: str) -> bool:
     return bool(_DOC_INTENT_EN.search(query) or _DOC_INTENT_AR.search(query))
 
@@ -150,6 +191,47 @@ def _has_definition_intent(query: str) -> bool:
 
 def _has_industrial_keyword(query: str) -> bool:
     return bool(_INDUSTRIAL_KEYWORDS_EN.search(query) or _INDUSTRIAL_KEYWORDS_AR.search(query))
+
+
+def classify_search_requirement(
+    query: str,
+    *,
+    answer_mode: str | None = None,
+    has_attached_files: bool = False,
+    has_selected_files: bool = False,
+) -> tuple[bool, str | None]:
+    stripped = (query or "").strip()
+    if not stripped:
+        return False, None
+
+    explicit_compare = bool(_COMPARE_WITH_WEB_EN.search(stripped) or _COMPARE_WITH_WEB_AR.search(stripped))
+    local_only = bool(_LOCAL_ONLY_EN.search(stripped) or _LOCAL_ONLY_AR.search(stripped))
+
+    if local_only and not explicit_compare:
+        return False, "local_only_request"
+
+    if answer_mode in {"groundx", "audio"} and not explicit_compare:
+        return False, "local_mode_without_web_override"
+
+    if has_attached_files and not explicit_compare:
+        return False, "attached_file_request"
+
+    if has_selected_files and not explicit_compare:
+        return False, "selected_scope_request"
+
+    has_search_trigger = bool(_SEARCH_TRIGGER_EN.search(stripped) or _SEARCH_TRIGGER_AR.search(stripped))
+    has_search_topic = bool(_SEARCH_TOPIC_EN.search(stripped) or _SEARCH_TOPIC_AR.search(stripped))
+
+    if explicit_compare:
+        return True, "explicit_web_comparison"
+    if has_search_trigger and has_search_topic:
+        return True, "explicit_current_information_request"
+    if has_search_trigger and any(word in stripped.lower() for word in ("latest", "current", "updated", "sources", "citations", "today")):
+        return True, "explicit_search_request"
+    if re.search(r"(أحدث|احدث|حالي|حاليا|حالياً|دلوقتي|اليوم)", stripped, re.IGNORECASE) and has_search_topic:
+        return True, "recent_fact_request"
+
+    return False, None
 
 
 def classify_query(

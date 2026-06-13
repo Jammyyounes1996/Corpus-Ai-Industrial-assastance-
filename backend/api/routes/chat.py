@@ -227,6 +227,7 @@ async def stream_chat(
         "attached_files": payload.attached_files or [],
         "routes": [],
         "groundx_results": [],
+        "groundx_search_text": "",
         "qdrant_results": [],
         "ocr_results": [],
         "context": "",
@@ -253,6 +254,13 @@ async def stream_chat(
         "qdrant_global_audio_search_allowed": False,
         "mode_decision": "",
         "no_match_message_type": "",
+        "task_type": payload.task_type or "",
+        "search_required": False,
+        "search_reason": None,
+        "search_used": False,
+        "search_error": None,
+        "web_results": [],
+        "web_sources": [],
     }
 
     import asyncio
@@ -263,7 +271,8 @@ async def stream_chat(
         return {"event": event_name, "data": json.dumps(data)}
 
     async def event_stream() -> AsyncGenerator[dict[str, str], None]:
-        collected_thinking_steps: list[dict[str, Any]] = []
+        collected_workflow_steps: list[dict[str, Any]] = []
+        collected_thinking_text_parts: list[str] = []
         collected_sources: list[dict[str, Any]] = []
         answer_text_parts: list[str] = []
         usage_metadata: dict[str, int] | None = None
@@ -287,14 +296,20 @@ async def stream_chat(
 
                 event_type = event.get("type", "")
 
-                if event_type == "thinking":
+                if event_type == "workflow":
                     payload_data = event["data"]
-                    collected_thinking_steps.append(payload_data["data"])
+                    collected_workflow_steps.append(payload_data["data"])
                     yield _sse(payload_data["event"], payload_data["data"])
 
-                elif event_type == "token":
+                elif event_type == "thinking_delta":
                     payload_data = event["data"]
-                    token_text = payload_data.get("data", {}).get("token", "")
+                    thinking_text = payload_data.get("data", {}).get("delta", "")
+                    collected_thinking_text_parts.append(thinking_text)
+                    yield _sse(payload_data["event"], payload_data["data"])
+
+                elif event_type == "answer_delta":
+                    payload_data = event["data"]
+                    token_text = payload_data.get("data", {}).get("delta", "")
                     answer_text_parts.append(token_text)
                     yield _sse(payload_data["event"], payload_data["data"])
 
@@ -348,6 +363,7 @@ async def stream_chat(
                             "relevant_chunks={} source_files={} prompt_mode={} "
                             "history_chars={} retrieval_skipped_reason={!r} "
                             "answer_mode={} retrieval_provider={} "
+                            "search_required={} search_reason={!r} search_used={} "
                             "groundx_global_search_allowed={} "
                             "qdrant_global_audio_search_allowed={} "
                             "mode_decision={!r} "
@@ -376,6 +392,9 @@ async def stream_chat(
                             final_state.get("retrieval_skipped_reason", "") or "",
                             final_state.get("answer_mode", ""),
                             final_state.get("retrieval_provider", ""),
+                            bool(final_state.get("search_required")),
+                            final_state.get("search_reason"),
+                            bool(final_state.get("search_used")),
                             bool(final_state.get("groundx_global_search_allowed")),
                             bool(final_state.get("qdrant_global_audio_search_allowed")),
                             final_state.get("mode_decision", "") or "",
@@ -386,7 +405,7 @@ async def stream_chat(
                 session,
                 assistant_message.id,
                 content=answer_text,
-                thinking_steps=json.dumps(collected_thinking_steps),
+                thinking_steps=json.dumps(collected_workflow_steps),
                 retrieved_context=json.dumps(collected_sources),
             )
             done_payload = emit_done(assistant_message.id, chat_id, usage_metadata)
@@ -402,7 +421,7 @@ async def stream_chat(
                 session,
                 assistant_message.id,
                 content=answer_text,
-                thinking_steps=json.dumps(collected_thinking_steps),
+                thinking_steps=json.dumps(collected_workflow_steps),
                 retrieved_context=json.dumps(collected_sources),
             )
             error_payload = emit_error("An internal error occurred. Please try again.")

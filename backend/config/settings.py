@@ -40,6 +40,21 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "joe-speedboat/Gemma-4-Uncensored-HauhauCS-Aggressive:e4b"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text:latest"
+    DEFAULT_NUM_CTX: int = 50000
+    DEFAULT_NUM_PREDICT: int = 2048
+    LONG_ANSWER_NUM_PREDICT: int = 4096
+    MAX_NUM_PREDICT: int = 8192
+    OLLAMA_NUM_CTX: int = 50000
+    OLLAMA_NUM_PREDICT: int = 2048
+    OCR_MODEL_NAME: str = "gemma4:12b"
+
+    WEB_SEARCH_ENABLED: bool = False
+    WEB_SEARCH_PROVIDER: str = "brave"
+    WEB_SEARCH_API_KEY: str = ""
+    WEB_SEARCH_MAX_RESULTS: int = 5
+    WEB_SEARCH_TIMEOUT_SECONDS: int = 10
+
+    GROUNDX_CONTEXT_MAX_CHARS: int = 50000
 
     WHISPER_DEVICE: str = "auto"
     WHISPER_COMPUTE_TYPE: str = "auto"
@@ -58,6 +73,8 @@ class Settings(BaseSettings):
     MAX_THINKING_STEPS_DISPLAY: int = 3
     CONVERSATION_SUMMARY_LIMIT: int = 50
     DEFAULT_THEME: str = "light"
+
+    OCR_PDF_MAX_PAGES: int = 20
 
     LOG_LEVEL: str = "INFO"
 

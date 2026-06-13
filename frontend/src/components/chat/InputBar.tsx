@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import {
   Mic,
-  Wrench,
   ChevronDown,
   ArrowUp,
   Square,
@@ -11,6 +10,7 @@ import { AttachmentTray } from './AttachmentTray'
 import type { AttachedFile, ValidationError } from '../../types/attachments'
 import type { AnswerMode } from '../../types/api'
 import { InlineError } from '../ui/InlineError'
+import { getTextDirection } from '../../utils/textDirection'
 import './InputBar.css'
 
 const ANSWER_MODE_OPTIONS: { value: AnswerMode; label: string; tooltip: string }[] = [
@@ -83,7 +83,11 @@ export function InputBar({
   const modeMenuRef = useRef<HTMLDivElement>(null)
 
   const trimmedText = text.trim()
-  const canSend = trimmedText.length > 0 && !disabled
+  const inputDir = getTextDirection(text)
+  const hasBlockingAttachments = attachments.some((file) =>
+    file.status === 'pending' || file.status === 'uploading' || file.status === 'failed'
+  )
+  const canSend = trimmedText.length > 0 && !disabled && !hasBlockingAttachments
 
   const handleSend = useCallback(() => {
     if (!canSend || isStreaming) return
@@ -175,150 +179,145 @@ export function InputBar({
       ) : null}
 
       <div className="input-bar__row">
-        <div className="input-bar__actions-left">
-          <FileAttachButton
-            disabled={disabled || isStreaming}
-            onSelectFiles={onAttachFiles}
-            canAddMoreFiles={canAddMoreFiles}
-            validateFiles={validateAttachmentFiles}
-          />
-
-          <button
-            className="input-bar__icon-btn"
-            disabled={disabled || isStreaming}
-            aria-label="Audio file"
-            title="Audio file"
-          >
-            <Mic size={16} />
-          </button>
-
-          <button
-            className="input-bar__icon-btn"
-            disabled={disabled || isStreaming}
-            aria-label="Tools"
-            title="Tools"
-          >
-            <Wrench size={16} />
-          </button>
-        </div>
-
         <textarea
           ref={textareaRef}
-          className="input-bar__textarea"
-          placeholder="Type your message..."
+          className={`input-bar__textarea input-bar__textarea--${inputDir}`}
+          placeholder="What's in your mind Mohamed?"
           value={text}
           onChange={handleTextareaInput}
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           disabled={disabled}
+          dir={inputDir}
+          style={inputDir === 'rtl' ? { textAlign: 'right' } : undefined}
           rows={1}
           aria-label="Message input"
         />
 
-        <div className="input-bar__actions-right">
-          <div className="input-bar__mode-selector" ref={modeMenuRef}>
-            <button
-              className="input-bar__model-btn"
-              onClick={toggleModeMenu}
-              disabled={disabled || isStreaming}
-              aria-label="Select answer mode"
-              title={currentModeOption.tooltip}
-              aria-expanded={isModeOpen}
-              aria-haspopup="listbox"
-            >
-              <span className="input-bar__model-label">
-                {currentModeOption.label}
-              </span>
-              <ChevronDown size={14} />
-            </button>
+        <div className="input-bar__controls">
+          <div className="input-bar__controls-left">
+            <div className="input-bar__mode-selector" ref={modeMenuRef}>
+              <button
+                className="input-bar__selector-pill"
+                onClick={toggleModeMenu}
+                disabled={disabled || isStreaming}
+                aria-label="Select answer mode"
+                title={currentModeOption.tooltip}
+                aria-expanded={isModeOpen}
+                aria-haspopup="listbox"
+              >
+                <span className="input-bar__selector-label">
+                  {currentModeOption.label}
+                </span>
+                <ChevronDown size={14} />
+              </button>
 
-            {isModeOpen && (
-              <ul className="input-bar__model-menu" role="listbox">
-                {ANSWER_MODE_OPTIONS.map((opt) => (
-                  <li key={opt.value} role="none">
-                    <button
-                      type="button"
-                      className={`input-bar__model-option ${
-                        opt.value === answerMode ? 'active' : ''
-                      }`}
-                      role="option"
-                      aria-selected={opt.value === answerMode}
-                      title={opt.tooltip}
-                      onClick={() => selectMode(opt.value)}
+              {isModeOpen && (
+                <ul className="input-bar__selector-menu" role="listbox">
+                  {ANSWER_MODE_OPTIONS.map((opt) => (
+                    <li key={opt.value} role="none">
+                      <button
+                        type="button"
+                        className={`input-bar__selector-option ${
+                          opt.value === answerMode ? 'active' : ''
+                        }`}
+                        role="option"
+                        aria-selected={opt.value === answerMode}
+                        title={opt.tooltip}
+                        onClick={() => selectMode(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="input-bar__model-selector" ref={modelMenuRef}>
+              <button
+                className="input-bar__selector-pill"
+                onClick={toggleModelMenu}
+                disabled={disabled || isStreaming}
+                aria-label="Select model"
+                aria-expanded={isModelOpen}
+                aria-haspopup="listbox"
+              >
+                <span className="input-bar__selector-label">
+                  {currentModel.label}
+                </span>
+                <ChevronDown size={14} />
+              </button>
+
+              {isModelOpen && (
+                <ul className="input-bar__selector-menu" role="listbox">
+                  {models.map((model) => (
+                    <li
+                      key={model.id}
+                      role="none"
                     >
-                      {opt.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+                      <button
+                        type="button"
+                        className={`input-bar__selector-option ${
+                          model.id === currentModel.id ? 'active' : ''
+                        }`}
+                        role="option"
+                        aria-selected={model.id === currentModel.id}
+                        onClick={() => selectModel(model)}
+                      >
+                        {model.label}
+                        <span className="input-bar__selector-provider">
+                          {model.provider}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
-          <div className="input-bar__model-selector" ref={modelMenuRef}>
-            <button
-              className="input-bar__model-btn"
-              onClick={toggleModelMenu}
+          <div className="input-bar__controls-right">
+            <FileAttachButton
               disabled={disabled || isStreaming}
-              aria-label="Select model"
-              aria-expanded={isModelOpen}
-              aria-haspopup="listbox"
+              onSelectFiles={onAttachFiles}
+              canAddMoreFiles={canAddMoreFiles}
+              validateFiles={validateAttachmentFiles}
+            />
+
+            <button
+              className="input-bar__icon-btn"
+              disabled={disabled || isStreaming}
+              aria-label="Audio file"
+              title="Audio file"
             >
-              <span className="input-bar__model-label">
-                {currentModel.label}
-              </span>
-              <ChevronDown size={14} />
+              <Mic size={16} />
             </button>
 
-            {isModelOpen && (
-              <ul className="input-bar__model-menu" role="listbox">
-                {models.map((model) => (
-                  <li
-                    key={model.id}
-                    role="none"
-                  >
-                    <button
-                      type="button"
-                      className={`input-bar__model-option ${
-                        model.id === currentModel.id ? 'active' : ''
-                      }`}
-                      role="option"
-                      aria-selected={model.id === currentModel.id}
-                      onClick={() => selectModel(model)}
-                    >
-                      {model.label}
-                      <span className="input-bar__model-provider">
-                        {model.provider}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            {isStreaming ? (
+              <button
+                className="input-bar__send-btn input-bar__send-btn--cancel"
+                onClick={handleCancel}
+                aria-label="Cancel streaming"
+                title="Cancel"
+              >
+                <Square size={16} />
+              </button>
+            ) : (
+              <button
+                className={`input-bar__send-btn ${
+                  canSend ? 'input-bar__send-btn--active' : ''
+                }`}
+                onClick={handleSend}
+                disabled={!canSend}
+                aria-label="Send message"
+                title="Send"
+              >
+                <ArrowUp size={18} />
+              </button>
             )}
           </div>
-
-          {isStreaming ? (
-            <button
-              className="input-bar__send-btn input-bar__send-btn--cancel"
-              onClick={handleCancel}
-              aria-label="Cancel streaming"
-              title="Cancel"
-            >
-              <Square size={16} />
-            </button>
-          ) : (
-            <button
-              className={`input-bar__send-btn ${
-                canSend ? 'input-bar__send-btn--active' : ''
-              }`}
-              onClick={handleSend}
-              disabled={!canSend}
-              aria-label="Send message"
-              title="Send"
-            >
-              <ArrowUp size={18} />
-            </button>
-          )}
         </div>
       </div>
     </div>

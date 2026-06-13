@@ -7,9 +7,11 @@ import './MessageList.css'
 interface MessageListProps {
   messages: Message[]
   isStreaming?: boolean
+  onRegenerate?: (assistantMessageId: string) => void
+  onEditUserMessage?: (messageId: string, newContent: string) => void
 }
 
-export function MessageList({ messages, isStreaming }: MessageListProps) {
+export function MessageList({ messages, isStreaming, onRegenerate, onEditUserMessage }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const isUserScrollingRef = useRef(false)
   const lastScrollTopRef = useRef(0)
@@ -42,12 +44,13 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
     >
       {messages.map((msg) => {
         if (msg.role === 'user') {
-          return <UserMessageCard key={msg.id} message={msg} />
+          return <UserMessageCard key={msg.id} message={msg} onEditResend={onEditUserMessage} />
         }
         return (
           <AssistantMessageCard
             key={msg.id}
             message={msg}
+            onRegenerate={onRegenerate ? () => onRegenerate(msg.id) : undefined}
           />
         )
       })}

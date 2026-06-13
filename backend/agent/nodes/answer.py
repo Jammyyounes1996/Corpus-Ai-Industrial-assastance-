@@ -6,7 +6,7 @@ import time
 from loguru import logger
 
 from backend.agent.state import AgentState
-from backend.agent.streaming import emit_sources, emit_thinking_step, emit_token
+from backend.agent.streaming import emit_sources, emit_thinking_delta, emit_thinking_step, emit_token
 from backend.config.settings import get_settings
 from backend.core.models.ollama_client import OllamaClient
 
@@ -44,7 +44,7 @@ RETRIEVED CONTEXT:
 _GENERAL_SYSTEM_PROMPT = """You are CORPUS, an industrial AI assistant.
 
 The user is asking a general conversational or knowledge question.
-Answer directly from your own knowledge, helpfully and concisely, in the
+Answer directly from your own knowledge, helpfully, in the
 user's language.
 
 {anti_phrasing}"""
@@ -52,11 +52,28 @@ user's language.
 _INDUSTRIAL_GENERAL_SYSTEM_PROMPT = """You are CORPUS, an industrial AI assistant.
 
 Answer the user's industrial/engineering question from your general
-industrial engineering knowledge. Be clear, accurate, and concise.
+industrial engineering knowledge. Be clear and accurate.
 You may add one short closing sentence noting that the user can upload a
 specific manual or standard for a grounded answer.
 
 {anti_phrasing}"""
+
+_DETAILED_ANSWER_INSTRUCTIONS = """DETAIL LEVEL RULES:
+- If the user asks for a detailed explanation, comprehensive answer, report, or says بالتفصيل / شرح مفصل / تقرير, provide a longer structured response.
+- Use short Markdown headings, bullet points, numbered steps when useful, examples, and caveats.
+- Do not be unnecessarily brief.
+- For Arabic answers, use clear Arabic headings and bullet points with readable Markdown formatting.
+"""
+
+_WEB_SEARCH_INSTRUCTIONS = """WEB VERIFICATION RULES:
+- WEB SEARCH RESULTS are attached below only when a real web search was executed.
+- Use them as supporting evidence for updated/current facts.
+- Prefer authoritative and recent sources.
+- Cite claims with source titles and links.
+- If sources disagree, say so clearly.
+- Only say that updated sources were checked when WEB SEARCH RESULTS are actually present.
+- For Arabic answers, include the note: تم التحقق من مصادر حديثة
+"""
 
 _CONSERVATIVE_NO_SOURCE_SYSTEM_PROMPT = """You are CORPUS, an industrial AI assistant.
 
@@ -75,7 +92,7 @@ _STRICT_GROUNDX_SUFFIX = (
     "question, you MUST respond with ONLY the following message and nothing "
     "else — do not explain, do not offer alternatives, do not use general "
     "knowledge:\n"
-    "لا توجد معلومات كافية في GroundX للإجابة على هذا السؤال."
+    "I could not find matching information in the GroundX documents."
 )
 
 _STRICT_AUDIO_SUFFIX = (
@@ -132,8 +149,49 @@ def _build_user_prompt(query: str, history_text: str, prompt_mode: str) -> str:
     )
 
 
+def _is_arabic_text(text: str) -> bool:
+    return any("\u0600" <= char <= "\u06FF" for char in text)
+
+
+def _wants_detailed_answer(query: str, answer_mode: str) -> bool:
+    normalized = f"{query} {answer_mode}".lower()
+    signals = (
+        "detailed",
+        "detail",
+        "comprehensive",
+        "deep",
+        "report",
+        "structured",
+        "بالتفصيل",
+        "شرح مفصل",
+        "تقرير",
+        "بشكل مفصل",
+    )
+    return any(signal in normalized for signal in signals)
+
+
+def _selected_num_predict(state: AgentState) -> int:
+    settings = get_settings()
+    target = settings.LONG_ANSWER_NUM_PREDICT if _wants_detailed_answer(state.get("query", ""), state.get("answer_mode", "")) else settings.DEFAULT_NUM_PREDICT
+    return max(1, min(target, settings.MAX_NUM_PREDICT))
+
+
+def _format_web_results(results: list[dict]) -> str:
+    lines: list[str] = []
+    for index, result in enumerate(results[:5], start=1):
+        lines.append(
+            f"{index}. {result.get('title', 'Untitled source')}\n"
+            f"   URL: {result.get('url', '')}\n"
+            f"   Source: {result.get('source', '')}\n"
+            f"   Published: {result.get('published_date', '')}\n"
+            f"   Snippet: {result.get('snippet', '')}"
+        )
+    return "\n".join(lines)
+
+
 _NO_MATCH_MESSAGES = {
     "groundx_no_match": "لا توجد معلومات كافية في GroundX للإجابة على هذا السؤال.",
+    "groundx_not_ready": "No GroundX documents are ready for retrieval yet. Please wait until at least one PDF shows Ready for GroundX retrieval.",
     "audio_no_match": "لا توجد معلومات كافية في التسجيلات الصوتية للإجابة على هذا السؤال.",
     "": "لا توجد معلومات كافية للإجابة على هذا السؤال.",
 }
@@ -175,6 +233,23 @@ def _is_answerability_yes(response: str) -> bool:
     return response.strip().upper().startswith("YES")
 
 
+def _is_ocr_only_request(state: AgentState) -> bool:
+    routes = state.get("routes", []) or []
+    return (
+        state.get("retrieval_provider") == "ocr"
+        or state.get("mode_decision") == "image_attachment_ocr"
+        or ("ocr" in routes and "qdrant" not in routes and "groundx" not in routes)
+    )
+
+
+def _ocr_answer_text(state: AgentState) -> str:
+    return "\n\n".join(
+        str(item.get("content", "")).strip()
+        for item in state.get("ocr_results", []) or []
+        if str(item.get("content", "")).strip()
+    )
+
+
 def _max_retrieval_score(state: AgentState) -> float | None:
     score = state.get("max_score")
     if isinstance(score, (int, float)):
@@ -198,6 +273,24 @@ _HEDGE_SIGNALS = (
 )
 
 
+def _trim_groundx_inputs(
+    query: str,
+    history_text: str,
+    retrieved_context: str,
+    prompt_mode: str,
+    retrieval_provider: str,
+) -> tuple[str, str]:
+    if retrieval_provider != "groundx" or prompt_mode != "GROUNDED_RAG":
+        return history_text, retrieved_context
+
+    settings = get_settings()
+    max_context_chars = max(2000, settings.GROUNDX_CONTEXT_MAX_CHARS)
+    max_history_chars = min(1200, max_context_chars // 4)
+    history_trimmed = history_text[-max_history_chars:] if len(history_text) > max_history_chars else history_text
+    context_trimmed = retrieved_context[:max_context_chars] if len(retrieved_context) > max_context_chars else retrieved_context
+    return history_trimmed, context_trimmed
+
+
 async def answer_node(
     state: AgentState,
     token_queue: asyncio.Queue | None = None,
@@ -207,7 +300,7 @@ async def answer_node(
 
     if token_queue is not None:
         await token_queue.put({
-            "type": "thinking",
+            "type": "workflow",
             "data": emit_thinking_step(
                 "answer_node", "Generating final answer...",
                 {"node": "answer_node", "status": "in_progress"},
@@ -219,6 +312,33 @@ async def answer_node(
         retrieved_context = state.get("retrieved_context", "") or state.get("context", "")
         history_text = state.get("history_text", "")
         prompt_mode = state.get("prompt_mode") or _fallback_prompt_mode(category, retrieved_context)
+        retrieval_provider = state.get("retrieval_provider", "")
+        history_text, retrieved_context = _trim_groundx_inputs(
+            state.get("query", ""),
+            history_text,
+            retrieved_context,
+            prompt_mode,
+            retrieval_provider,
+        )
+        state["retrieved_context"] = retrieved_context
+        state["context"] = retrieved_context
+        state["history_text"] = history_text
+
+        if _is_ocr_only_request(state):
+            ocr_text = _ocr_answer_text(state)
+            if ocr_text:
+                state["answer"] = ocr_text
+                logger.info(
+                    "answer_node: returning OCR-only answer without LLM "
+                    "answer_mode={} retrieval_provider={} mode_decision={}",
+                    state.get("answer_mode", ""),
+                    state.get("retrieval_provider", ""),
+                    state.get("mode_decision", ""),
+                )
+                if token_queue is not None:
+                    await token_queue.put({"type": "answer_delta", "data": emit_token(ocr_text)})
+                    await token_queue.put({"type": "done", "data": None})
+                return state
 
         # ── No-match fast path: emit Arabic message without calling LLM ──
         if prompt_mode == "CONSERVATIVE_NO_SOURCE":
@@ -242,11 +362,28 @@ async def answer_node(
                 )
                 state["answer"] = message
                 if token_queue is not None:
-                    await token_queue.put({"type": "token", "data": emit_token(message)})
+                    await token_queue.put({"type": "answer_delta", "data": emit_token(message)})
                     await token_queue.put({"type": "done", "data": None})
                 return state
 
+        if state.get("search_required") and state.get("search_error"):
+            message = state["search_error"]
+            if _is_arabic_text(state.get("query", "")):
+                message = "هذا الطلب يحتاج بحثا ويب حقيقيا، لكن مزود البحث غير مهيأ حاليا. فعّل WEB_SEARCH_ENABLED واضبط WEB_SEARCH_PROVIDER و WEB_SEARCH_API_KEY ثم أعد المحاولة."
+            state["answer"] = message
+            if token_queue is not None:
+                await token_queue.put({"type": "answer_delta", "data": emit_token(message)})
+                await token_queue.put({"type": "done", "data": None})
+            return state
+
         system_prompt = _select_system_prompt(prompt_mode, retrieved_context, state.get("retrieval_provider", ""))
+        if _wants_detailed_answer(state.get("query", ""), state.get("answer_mode", "")):
+            system_prompt = f"{system_prompt}\n\n{_DETAILED_ANSWER_INSTRUCTIONS}"
+        if state.get("search_used") and state.get("web_results"):
+            system_prompt = (
+                f"{system_prompt}\n\n{_WEB_SEARCH_INSTRUCTIONS}\n"
+                f"WEB SEARCH RESULTS:\n{_format_web_results(state.get('web_results', []))}"
+            )
         prompt = _build_user_prompt(state["query"], history_text, prompt_mode)
 
         logger.info(
@@ -263,9 +400,9 @@ async def answer_node(
         client = OllamaClient()
         settings = get_settings()
         model_name = state.get("model_name") or settings.OLLAMA_MODEL
+        selected_num_predict = _selected_num_predict(state)
         tokens: list[str] = []
         ollama_metadata: dict | None = None
-        retrieval_provider = state.get("retrieval_provider", "")
         should_buffer_for_hedge = (
             retrieval_provider in ("groundx", "qdrant_audio")
             and prompt_mode == "GROUNDED_RAG"
@@ -279,6 +416,7 @@ async def answer_node(
                 system=_ANSWERABILITY_SYSTEM_PROMPT,
                 temperature=0.0,
                 max_tokens=8,
+                num_ctx=settings.OLLAMA_NUM_CTX,
             ):
                 if isinstance(token, dict):
                     continue
@@ -300,7 +438,7 @@ async def answer_node(
                     state["no_match_message_type"] = msg_type
                     if token_queue is not None:
                         await token_queue.put({"type": "sources", "data": emit_sources([])})
-                        await token_queue.put({"type": "token", "data": emit_token(state["answer"])})
+                        await token_queue.put({"type": "answer_delta", "data": emit_token(state["answer"])})
                         await token_queue.put({"type": "done", "data": None})
                     return state
 
@@ -316,10 +454,10 @@ async def answer_node(
         logger.info(
             "RAG_FINAL_PROMPT_TRACE prompt_mode={} system_prompt_name={} "
             "user_prompt_len={} system_prompt_len={} history_chars={} "
-            "context_length={} model={} user_prompt_markers={} system_prompt_markers={} "
+            "context_length={} model={} num_predict={} num_ctx={} user_prompt_markers={} system_prompt_markers={} "
             "answer_mode={} retrieval_provider={} mode_decision={} "
             "groundx_global_search_allowed={} qdrant_global_audio_search_allowed={} "
-            "no_match_message_type={!r}",
+            "no_match_message_type={!r} search_used={} search_required={} search_reason={!r}",
             prompt_mode,
             (
                 "GROUNDED" if prompt_mode == "GROUNDED_RAG"
@@ -333,6 +471,8 @@ async def answer_node(
             len(history_text),
             len(retrieved_context),
             model_name,
+            selected_num_predict,
+            settings.DEFAULT_NUM_CTX,
             prompt_has_marker,
             system_has_marker,
             state.get("answer_mode", ""),
@@ -341,21 +481,39 @@ async def answer_node(
             state.get("groundx_global_search_allowed", False),
             state.get("qdrant_global_audio_search_allowed", False),
             state.get("no_match_message_type", ""),
+            bool(state.get("search_used")),
+            bool(state.get("search_required")),
+            state.get("search_reason"),
         )
 
-        async for token in client.generate_stream(
+        async for chunk in client.chat_stream(
             prompt=prompt,
             model=model_name,
             system=system_prompt,
             temperature=0.1,
-            max_tokens=2048,
+            max_tokens=selected_num_predict,
+            num_ctx=settings.DEFAULT_NUM_CTX,
         ):
-            if isinstance(token, dict):
-                ollama_metadata = token
+            if chunk.get("done"):
+                ollama_metadata = chunk
                 continue
-            tokens.append(token)
+            thinking_delta = chunk.get("thinking")
+            if isinstance(thinking_delta, str) and thinking_delta:
+                if token_queue is not None:
+                    elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+                    await token_queue.put({
+                        "type": "thinking_delta",
+                        "data": emit_thinking_delta(thinking_delta, elapsed_ms),
+                    })
+                continue
+
+            answer_delta = chunk.get("content")
+            if not isinstance(answer_delta, str) or not answer_delta:
+                continue
+
+            tokens.append(answer_delta)
             if token_queue is not None and not should_buffer_for_hedge:
-                await token_queue.put({"type": "token", "data": emit_token(token)})
+                await token_queue.put({"type": "answer_delta", "data": emit_token(answer_delta)})
 
         state["answer"] = "".join(tokens)
         duration_ms = int((time.perf_counter() - start_time) * 1000)
@@ -364,6 +522,7 @@ async def answer_node(
             prompt_tokens = ollama_metadata.get("prompt_eval_count")
             completion_tokens = ollama_metadata.get("eval_count")
             total_duration = ollama_metadata.get("total_duration")
+            done_reason = ollama_metadata.get("done_reason")
             if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
                 generation_time_ms = duration_ms
                 if isinstance(total_duration, int):
@@ -375,6 +534,15 @@ async def answer_node(
                     "generation_time_ms": generation_time_ms,
                 }
                 state["usage"] = usage
+            logger.info(
+                "answer_node ollama_complete model={} num_predict={} done_reason={} eval_count={} prompt_eval_count={} total_duration_ns={}",
+                model_name,
+                selected_num_predict,
+                done_reason,
+                completion_tokens,
+                prompt_tokens,
+                total_duration,
+            )
 
         # ── Post-LLM no-match detection (safety net for groundx/audio modes) ──
         hedge_detected = False
@@ -392,16 +560,16 @@ async def answer_node(
                 state["no_match_message_type"] = msg_type
                 if token_queue is not None:
                     await token_queue.put({"type": "sources", "data": emit_sources([])})
-                    await token_queue.put({"type": "token", "data": emit_token(state["answer"])})
+                    await token_queue.put({"type": "answer_delta", "data": emit_token(state["answer"])})
 
         if token_queue is not None and should_buffer_for_hedge and not hedge_detected:
             for token in tokens:
-                await token_queue.put({"type": "token", "data": emit_token(token)})
+                await token_queue.put({"type": "answer_delta", "data": emit_token(token)})
 
         if (
             token_queue is not None
             and state.get("sources")
-            and prompt_mode == "GROUNDED_RAG"
+            and (prompt_mode == "GROUNDED_RAG" or state.get("search_used"))
             and not hedge_detected
         ):
             await token_queue.put({"type": "sources", "data": emit_sources(state["sources"])})

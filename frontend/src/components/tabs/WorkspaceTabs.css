@@ -1,13 +1,7 @@
-/* Workspace Tabs Styles */
-
 .workspace-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 0 var(--spacing-lg);
-  background-color: var(--surface-main);
+  display: none;
 }
 
-/* Tab button */
 .tab-button {
   position: relative;
   padding: var(--spacing-sm) var(--spacing-md);
@@ -36,7 +30,6 @@
   outline-offset: -2px;
 }
 
-/* Active tab state */
 .tab-button.active {
   color: var(--color-primary-700);
   font-weight: var(--font-weight-semibold);
@@ -53,7 +46,6 @@
   border-radius: 1px 1px 0 0;
 }
 
-/* Tab icon */
 .tab-icon {
   font-size: var(--font-size-sm);
   opacity: 0.85;
@@ -63,12 +55,10 @@
   opacity: 1;
 }
 
-/* Tab label */
 .tab-label {
   font-size: var(--font-size-sm);
 }
 
-/* Disabled state */
 .tab-button:disabled {
   opacity: var(--opacity-disabled);
   cursor: not-allowed;
@@ -79,12 +69,10 @@
   background-color: transparent;
 }
 
-/* Keyboard navigation */
 .tab-button:focus {
   z-index: 10;
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
   .workspace-tabs {
     overflow-x: auto;

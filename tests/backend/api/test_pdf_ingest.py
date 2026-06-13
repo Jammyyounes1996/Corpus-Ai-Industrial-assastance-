@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from backend.main import app
+from backend.database import crud
 from backend.database.database import get_session
 
 
@@ -26,16 +27,74 @@ async def test_ingest_pdf_valid(client):
     files = {"file": ("test.pdf", pdf_content, "application/pdf")}
 
     with patch("backend.core.ingestion.pdf_ingestor.groundx_client") as mock_gx:
-        mock_gx.upload_pdf = AsyncMock(return_value={"document_id": "doc-123"})
+        mock_gx.upload_pdf = AsyncMock(return_value={
+            "status": "queued",
+            "process_id": "proc-123",
+            "document_id": "doc-123",
+            "bucket_id": "28306",
+        })
 
         response = await client.post("/api/ingest/pdf", files=files)
 
     assert response.status_code == 200
     data = response.json()
     assert data["filename"] == "test.pdf"
-    assert data["status"] == "processing"
-    assert data["size_bytes"] == len(pdf_content)
+    assert data["status"] == "queued"
+    assert data["indexing_status"] == "queued"
+    assert data["size"] == len(pdf_content)
+    assert data["groundx_process_id"] == "proc-123"
+    assert data["groundx_bucket_id"] == "28306"
     assert "file_id" in data
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("groundx_status", "expected_status", "ready", "error_message"),
+    [
+        ({"status": "processing", "process_id": "proc-1", "bucket_id": "28306", "document_id": None}, "processing", False, None),
+        ({"status": "indexed", "process_id": "proc-1", "bucket_id": "28306", "document_id": "doc-1"}, "indexed", True, None),
+        ({"status": "failed", "process_id": "proc-1", "bucket_id": "28306", "document_id": None, "error_message": "boom"}, "failed", False, "boom"),
+    ],
+)
+async def test_get_pdf_status_refreshes_groundx_state(
+    client,
+    db_session,
+    groundx_status,
+    expected_status,
+    ready,
+    error_message,
+):
+    db_file = await crud.create_file(
+        db_session,
+        original_name="status.pdf",
+        file_type="pdf",
+        disk_path="data/uploads/status.pdf",
+        size_bytes=42,
+        groundx_process_id="proc-1",
+        groundx_bucket_id="28306",
+    )
+    await crud.update_file_indexing_status(
+        db_session,
+        db_file.id,
+        status="processing",
+        groundx_process_id="proc-1",
+        groundx_bucket_id="28306",
+        status_message="Processing in GroundX",
+    )
+    await db_session.commit()
+
+    with patch("backend.core.ingestion.pdf_ingestor.groundx_client") as mock_gx:
+        mock_gx.get_processing_status = AsyncMock(return_value=groundx_status)
+        response = await client.get(f"/api/files/{db_file.id}/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["file_id"] == db_file.id
+    assert data["groundx_process_id"] == "proc-1"
+    assert data["groundx_bucket_id"] == "28306"
+    assert data["indexing_status"] == expected_status
+    assert data["ready_for_groundx_retrieval"] is ready
+    assert data["error_message"] == error_message
 
 
 @pytest.mark.asyncio

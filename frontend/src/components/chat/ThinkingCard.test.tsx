@@ -8,10 +8,11 @@ describe('ThinkingCard', () => {
     const { container } = renderComponent(
       <ThinkingCard
         isStreaming={false}
-        steps={[{ id: 's1', type: 'reasoning', content: 'step', timestamp: new Date(), status: 'complete' }]}
+        content="step"
+        elapsedMs={1200}
       />
     )
-    expect(container.textContent).toContain('Thinking')
+    expect(container.textContent).toContain('Thought for')
     vi.advanceTimersByTime(2100)
     const header = container.querySelector('.thinking-card__header')
     expect(header?.getAttribute('aria-expanded')).toBe('false')

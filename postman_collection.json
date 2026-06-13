@@ -1,0 +1,291 @@
+{
+  "info": {
+    "name": "Industrial AI Assistant API",
+    "description": "API endpoints for the Industrial AI Assistant backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8001/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Ingest PDF",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "multipart/form-data"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "description": "PDF file to ingest"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://localhost:8001/api/ingest/pdf",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["api", "ingest", "pdf"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Ingest Audio",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "multipart/form-data"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "description": "Audio file to ingest (MP3, WAV, M4A, OGG)"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://localhost:8001/api/ingest/audio",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["api", "ingest", "audio"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Ingest Image",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "multipart/form-data"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "description": "Image file to ingest (JPG, PNG, WEBP)"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://localhost:8001/api/ingest/image",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["api", "ingest", "image"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "List Files (All)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8001/api/files?type=all&sort=date_desc&limit=100&offset=0",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["api", "files"],
+          "query": [
+            {
+              "key": "type",
+              "value": "all",
+              "description": "Filter by type: all, pdf, audio, image"
+            },
+            {
+              "key": "sort",
+              "value": "date_desc",
+              "description": "Sort: date_desc, date_asc, name"
+            },
+            {
+              "key": "limit",
+              "value": "100",
+              "description": "Max results (1-500)"
+            },
+            {
+              "key": "offset",
+              "value": "0",
+              "description": "Offset for pagination"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "List Files (PDF only)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8001/api/files?type=pdf&sort=date_desc&limit=100&offset=0",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["api", "files"],
+          "query": [
+            {
+              "key": "type",
+              "value": "pdf",
+              "description": "Filter by type: all, pdf, audio, image"
+            },
+            {
+              "key": "sort",
+              "value": "date_desc",
+              "description": "Sort: date_desc, date_asc, name"
+            },
+            {
+              "key": "limit",
+              "value": "100",
+              "description": "Max results (1-500)"
+            },
+            {
+              "key": "offset",
+              "value": "0",
+              "description": "Offset for pagination"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "List Files (Audio only)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8001/api/files?type=audio&sort=date_desc&limit=100&offset=0",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["api", "files"],
+          "query": [
+            {
+              "key": "type",
+              "value": "audio",
+              "description": "Filter by type: all, pdf, audio, image"
+            },
+            {
+              "key": "sort",
+              "value": "date_desc",
+              "description": "Sort: date_desc, date_asc, name"
+            },
+            {
+              "key": "limit",
+              "value": "100",
+              "description": "Max results (1-500)"
+            },
+            {
+              "key": "offset",
+              "value": "0",
+              "description": "Offset for pagination"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "List Files (Image only)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8001/api/files?type=image&sort=date_desc&limit=100&offset=0",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["api", "files"],
+          "query": [
+            {
+              "key": "type",
+              "value": "image",
+              "description": "Filter by type: all, pdf, audio, image"
+            },
+            {
+              "key": "sort",
+              "value": "date_desc",
+              "description": "Sort: date_desc, date_asc, name"
+            },
+            {
+              "key": "limit",
+              "value": "100",
+              "description": "Max results (1-500)"
+            },
+            {
+              "key": "offset",
+              "value": "0",
+              "description": "Offset for pagination"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Delete File",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "http://localhost:8001/api/files/{{file_id}}",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": 8001,
+          "path": ["api", "files", "{{file_id}}"]
+        },
+        "description": "Replace {{file_id}} with the actual file ID to delete"
+      },
+      "response": []
+    }
+  ],
+  "auth": null,
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "javascript",
+        "exec": [
+          "// Set base URL for all requests in collection",
+          "pm.environment.set('baseUrl', 'http://localhost:8001');"
+        ]
+      }
+    }
+  ]
+}

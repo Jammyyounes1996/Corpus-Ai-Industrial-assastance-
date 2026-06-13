@@ -25,7 +25,22 @@ data/audio/
 data/images/
 qdrant_storage/
 *.db
+*.db-shm
+*.db-wal
 industrial_ai.db
+industrial_ai.db-shm
+industrial_ai.db-wal
+evaluation_results.json
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+build/
+
+# Secrets - never commit
+.env
 
 # IDE
 .vscode/
@@ -46,5 +61,9 @@ logs/
 # Alembic
 backend/database/migrations/versions/*.pyc
 
-#Graphyfi
-graphify-out\cache
+# Graphify
+graphify-out/
+graphify-out/cache
+
+# Misc
+*.bak

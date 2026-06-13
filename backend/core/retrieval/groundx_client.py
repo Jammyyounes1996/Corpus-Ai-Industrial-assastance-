@@ -9,6 +9,20 @@ from loguru import logger
 from backend.config.settings import get_settings
 
 
+def _body_dict(response: object) -> dict:
+    body = getattr(response, "body", response)
+    return body if isinstance(body, dict) else {}
+
+
+def _first_progress_document(progress: dict) -> tuple[str, dict]:
+    for bucket_name in ("errors", "complete", "processing", "queued", "cancelled"):
+        bucket = progress.get(bucket_name) or {}
+        documents = bucket.get("documents") or []
+        if documents:
+            return bucket_name, documents[0]
+    return "", {}
+
+
 class GroundXClient:
     """Client for GroundX PDF processing with upload and status polling."""
 
@@ -17,6 +31,36 @@ class GroundXClient:
 
     def _get_client(self) -> Groundx:
         return Groundx(api_key=self._settings.GROUNDX_API_KEY)
+
+    def _normalize_processing_payload(self, payload: dict) -> dict:
+        ingest = payload.get("ingest") or {}
+        progress = ingest.get("progress") or {}
+        bucket_name, document = _first_progress_document(progress)
+        top_status = str(ingest.get("status") or "").lower()
+        document_status = str(document.get("status") or "").lower()
+        raw_status = document_status or top_status
+
+        if bucket_name == "errors" or raw_status in {"error", "failed", "cancelled"}:
+            app_status = "failed"
+        elif bucket_name == "complete" or raw_status == "complete":
+            app_status = "indexed"
+        elif bucket_name == "queued" or raw_status == "queued":
+            app_status = "queued"
+        elif bucket_name == "processing" or raw_status in {"processing", "training"} or top_status == "training":
+            app_status = "processing"
+        else:
+            app_status = "processing"
+
+        return {
+            "status": app_status,
+            "raw_status": raw_status or top_status,
+            "process_id": str(document.get("processId") or ingest.get("processId") or "") or None,
+            "document_id": str(document.get("documentId") or "") or None,
+            "bucket_id": str(document.get("bucketId") or "") or None,
+            "status_message": document.get("statusMessage") or ingest.get("statusMessage") or None,
+            "error_message": document.get("statusMessage") or ingest.get("error") or None,
+            "document": document,
+        }
 
     async def upload_pdf(
         self,
@@ -54,26 +98,16 @@ class GroundXClient:
                 response = client.documents.ingest_local(
                     body=[document]
                 )
-            ingest_data = response.body
+            ingest_data = _body_dict(response)
             logger.info(
                 "GroundX upload successful for '{}': {}",
                 original_name,
                 ingest_data,
             )
-
-            process_id = None
-            status = None
-
-            if isinstance(ingest_data, dict) and "ingest" in ingest_data:
-                ingest = ingest_data["ingest"]
-                process_id = ingest.get("processId")
-                status = ingest.get("status")
-
-            return {
-                "process_id": process_id,
-                "status": status,
-                "document_id": None,  # Will be populated after processing completes
-            }
+            normalized = self._normalize_processing_payload(ingest_data)
+            if not normalized.get("status_message"):
+                normalized["status_message"] = "Queued for GroundX indexing"
+            return normalized
 
         except ApiException as exc:
             logger.error("GroundX API error uploading '{}': {}", original_name, exc)
@@ -111,22 +145,16 @@ class GroundXClient:
                     process_id=process_id,
                 )
 
-                status = None
-                if isinstance(response.body, dict):
-                    ingest = response.body.get("ingest") or {}
-                    status = ingest.get("status", "").lower()
+                normalized = self._normalize_processing_payload(_body_dict(response))
+                status = normalized["status"]
 
                 logger.debug("GroundX poll for process {}: status={}", process_id, status)
 
-                if status in ("complete", "completed"):
-                    return {"status": "complete"}
+                if status == "indexed":
+                    return normalized
 
-                if status in ("error", "failed"):
-                    error_msg = ""
-                    if isinstance(response.body, dict):
-                        ingest = response.body.get("ingest") or {}
-                        error_msg = ingest.get("error", "Unknown error")
-                    return {"status": "error", "error_message": error_msg}
+                if status == "failed":
+                    return normalized
 
             except ApiException as exc:
                 logger.warning("GroundX poll API error for process {}: {}", process_id, exc)
@@ -138,8 +166,21 @@ class GroundXClient:
             f"GroundX indexing timed out after {max_wait}s for process {process_id}"
         )
 
+    async def get_processing_status(self, process_id: str) -> dict:
+        client = self._get_client()
 
-    async def search(self, query: str, n_results: int = 5) -> list[dict]:
+        try:
+            response = client.documents.get_processing_status_by_id(process_id=process_id)
+            return self._normalize_processing_payload(_body_dict(response))
+        except ApiException as exc:
+            logger.error("GroundX status API error for process {}: {}", process_id, exc)
+            raise RuntimeError(f"GroundX status check failed: {exc}") from exc
+        except Exception as exc:
+            logger.error("GroundX status unexpected error for process {}: {}", process_id, exc)
+            raise RuntimeError(f"GroundX status check failed: {exc}") from exc
+
+
+    async def search(self, query: str, n_results: int = 5) -> dict:
         """Search indexed documents in GroundX for relevant content.
 
         Args:
@@ -161,16 +202,23 @@ class GroundXClient:
             )
 
             results: list[dict] = []
-            search_data = response.body if hasattr(response, "body") else {}
+            search_data = _body_dict(response)
             search_obj = search_data.get("search", {})
+            search_text = search_obj.get("text", "") or ""
             chunks = search_obj.get("results", [])
 
             for chunk in chunks[:n_results]:
                 results.append({
-                    "content": chunk.get("text", ""),
+                    "content": chunk.get("text") or chunk.get("suggestedText", ""),
                     "score": float(chunk.get("score", 0.0)),
                     "file_name": chunk.get("fileName", ""),
-                    "chunk_id": str(chunk.get("chunkId", "")),
+                    "source": chunk.get("sourceUrl") or chunk.get("fileName") or "groundx",
+                    "document_id": str(chunk.get("documentId", "") or "") or None,
+                    "source_url": chunk.get("sourceUrl"),
+                    "suggested_text": chunk.get("suggestedText"),
+                    "excerpt": chunk.get("text") or chunk.get("suggestedText", ""),
+                    "bucket_id": str(self._settings.GROUNDX_BUCKET_ID),
+                    "provider": "groundx",
                 })
 
             logger.info(
@@ -178,7 +226,10 @@ class GroundXClient:
                 query[:80],
                 len(results),
             )
-            return results
+            return {
+                "text": search_text,
+                "results": results,
+            }
 
         except ApiException as exc:
             logger.error("GroundX search API error: {}", exc)

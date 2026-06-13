@@ -6,6 +6,13 @@
 
 import { AttachedFile } from './attachments'
 
+export interface PendingSend {
+  query: string
+  attachedFileIds?: string[]
+  answerMode?: string
+  taskType?: string
+}
+
 export interface ChatSession {
   id: string
   title: string
@@ -14,6 +21,7 @@ export interface ChatSession {
   isActive: boolean
   backendChatId?: string // Created when chat is sent to backend
   messages: Message[]
+  pendingSend?: PendingSend
 }
 
 export interface Message {
@@ -24,6 +32,8 @@ export interface Message {
   status: 'pending' | 'sending' | 'streaming' | 'complete' | 'failed' | 'cancelled'
   attachments?: AttachedFile[]
   sources?: SourceReference[]
+  thinkingText?: string
+  thinkingElapsedMs?: number
   thinkingSteps?: ThinkingStep[]
   usage?: UsageMetadata
   error?: string
@@ -54,25 +64,35 @@ export interface SourceReference {
 }
 
 export interface StreamEvent {
-  event: 'thinking_step' | 'token' | 'sources' | 'done' | 'error'
+  event: 'workflow_step' | 'thinking_delta' | 'answer_delta' | 'sources' | 'done' | 'error'
   data: unknown
 }
 
-export interface TokenEvent {
-  event: 'token'
+export interface WorkflowStepEvent {
+  event: 'workflow_step'
   data: {
-    token: string
-    message_id?: string
+    type: 'workflow_step'
+    node: string
+    status: string
+    label?: string
+    timestamp?: string
+    duration_ms?: number
   }
 }
 
-export interface ThinkingStepEvent {
-  event: 'thinking_step'
+export interface ThinkingDeltaEvent {
+  event: 'thinking_delta'
   data: {
-    type: string
-    content: string
-    timestamp: string
-    step_id: string
+    delta: string
+    elapsed_ms?: number
+  }
+}
+
+export interface AnswerDeltaEvent {
+  event: 'answer_delta'
+  data: {
+    delta: string
+    message_id?: string
   }
 }
 
@@ -103,8 +123,9 @@ export interface ErrorEvent {
 }
 
 export type ChatStreamEvent = 
-  | TokenEvent 
-  | ThinkingStepEvent 
+  | WorkflowStepEvent
+  | ThinkingDeltaEvent
+  | AnswerDeltaEvent
   | SourcesEvent 
   | DoneEvent 
   | ErrorEvent

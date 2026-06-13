@@ -13,10 +13,17 @@ from backend.core.models.ollama_client import OllamaClient
 from backend.database import crud
 from backend.database.models import Message
 from backend.agent.state import AgentState
-from backend.agent.query_classifier import classify_query, QueryCategory
+from backend.agent.query_classifier import QueryCategory, classify_query, classify_search_requirement
 
 
 settings = get_settings()
+
+
+async def _has_image_attachment(session: AsyncSession | None, file_ids: list[str]) -> bool:
+    if session is None or not file_ids:
+        return False
+    files = await crud.get_files_by_ids(session, file_ids)
+    return any(crud.is_image_file(file) for file in files)
 
 
 async def summarize_conversation(chat_id: str, session: AsyncSession) -> None:
@@ -76,8 +83,35 @@ async def router_node(
     state["groundx_called"] = False
     state["ocr_called"] = False
     state["retrieval_skipped_reason"] = ""
+    state["search_used"] = False
+    state["search_error"] = None
+    state["web_results"] = []
+    state["web_sources"] = []
 
+    cfg = config or {}
+    configurable = cfg.get("configurable", {}) if isinstance(cfg, dict) else {}
+    config_session = configurable.get("session") if isinstance(configurable, dict) else None
+    db_session = session or config_session
+
+    attached_files = state.get("attached_files") or []
     answer_mode = state.get("answer_mode")
+    has_image_attachment = await _has_image_attachment(db_session, attached_files)
+    selected_scope = state.get("selected_scope") or []
+    has_selected = bool(selected_scope)
+    search_required, search_reason = classify_search_requirement(
+        state.get("query", ""),
+        answer_mode=answer_mode,
+        has_attached_files=bool(attached_files),
+        has_selected_files=has_selected,
+    )
+    state["search_required"] = search_required
+    state["search_reason"] = search_reason
+
+    if has_image_attachment and answer_mode != "groundx":
+        state["routes"] = ["ocr"]
+        state["retrieval_provider"] = "ocr"
+        state["mode_decision"] = "image_attachment_ocr"
+        return state
 
     if answer_mode is not None:
         if answer_mode == "general":
@@ -88,6 +122,7 @@ async def router_node(
             return state
 
         if answer_mode == "groundx":
+            logger.info("Qdrant skipped due to GroundX mode")
             state["routes"] = ["groundx"]
             state["retrieval_provider"] = "groundx"
             state["groundx_global_search_allowed"] = True
@@ -104,11 +139,6 @@ async def router_node(
         # Unrecognized — fall through to classifier (safety net)
 
     try:
-        cfg = config or {}
-        configurable = cfg.get("configurable", {}) if isinstance(cfg, dict) else {}
-        config_session = configurable.get("session") if isinstance(configurable, dict) else None
-
-        db_session = session or config_session
         if db_session is not None and state.get("chat_id"):
             messages = await crud.get_chat_messages(db_session, chat_id=state["chat_id"], limit=100)
             if len(messages) > settings.CONVERSATION_SUMMARY_LIMIT:
@@ -116,12 +146,7 @@ async def router_node(
                 messages = await crud.get_chat_messages(db_session, chat_id=state["chat_id"], limit=100)
             state["history"] = [{"role": msg.role, "content": msg.content} for msg in messages]
 
-        attached_files = state.get("attached_files") or []
         has_attached = bool(attached_files)
-        # Optional explicit scope passed via state (selected file IDs or a KB scope).
-        selected_scope = state.get("selected_scope") or []
-        has_selected = bool(selected_scope)
-
         category = classify_query(
             state.get("query", ""),
             has_attached_files=has_attached,
@@ -186,6 +211,8 @@ async def router_node(
                     "routes": routes,
                     "attached_files": len(attached_files),
                     "has_selected_scope": has_selected,
+                    "search_required": search_required,
+                    "search_reason": search_reason,
                 },
             )
         )

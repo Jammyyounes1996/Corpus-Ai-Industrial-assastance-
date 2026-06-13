@@ -17,6 +17,7 @@ class AgentState(TypedDict):
 
     # GroundX/PDF retrieval results.
     groundx_results: Annotated[list[dict], operator.add]
+    groundx_search_text: str
     # Vector database retrieval results.
     qdrant_results: Annotated[list[dict], operator.add]
     # OCR retrieval results for image attachments.
@@ -73,3 +74,17 @@ class AgentState(TypedDict):
     mode_decision: str
     # Type of no-match message to emit when prompt_mode is CONSERVATIVE_NO_SOURCE.
     no_match_message_type: str
+    # Explicit task type from frontend: "ocr_image" | "" for task-aware routing.
+    task_type: str
+    # Whether the router determined that current information requires web search.
+    search_required: bool
+    # Why web search was requested or skipped.
+    search_reason: str | None
+    # Whether a real web search provider was called.
+    search_used: bool
+    # Search provider configuration/runtime failure message.
+    search_error: str | None
+    # Raw normalized web results.
+    web_results: list[dict[str, Any]]
+    # Web sources normalized for citations/SSE.
+    web_sources: list[dict[str, Any]]

@@ -14,12 +14,15 @@ router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 VALID_PDF_TYPES = {"application/pdf"}
 VALID_AUDIO_TYPES = {
     "audio/mpeg",
-    "audio/wav",
-    "audio/x-wav",
+    "audio/mp3",
+    "audio/mp4",
     "audio/m4a",
     "audio/x-m4a",
+    "audio/wav",
+    "audio/x-wav",
     "audio/ogg",
-    "audio/mp4",
+    "audio/webm",
+    "video/mp4",
 }
 VALID_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
@@ -124,6 +127,45 @@ async def ingest_image(
             session,
             file_content=file_content,
             original_name=file.filename or "unknown.jpg",
+            content_type=content_type,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "exceeds" in msg:
+            raise HTTPException(
+                status_code=413,
+                detail={"error": "PayloadTooLarge", "message": msg},
+            )
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "ValidationError", "message": msg},
+        )
+
+    return result
+
+
+@router.post("/ocr-pdf")
+async def ingest_ocr_pdf(
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    content_type = (file.content_type or "").lower()
+    if content_type not in VALID_PDF_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail={
+                "error": "UnsupportedMediaType",
+                "message": f"Invalid content type: {file.content_type}. Expected application/pdf",
+            },
+        )
+
+    file_content = await file.read()
+
+    try:
+        result = await pdf_ingestor.save_pdf_only(
+            session,
+            file_content=file_content,
+            original_name=file.filename or "unknown.pdf",
             content_type=content_type,
         )
     except ValueError as exc:

@@ -1,27 +1,26 @@
 import { useCallback, useState } from 'react'
-import { Copy, RotateCcw, Maximize2, Download, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Copy, RotateCcw, Maximize2, Minimize2, Download, ThumbsUp, ThumbsDown } from 'lucide-react'
 import './AssistantMessageCard.css'
 
 interface AssistantActionsProps {
   content: string
+  expanded?: boolean
   onCopy?: () => void
   onRegenerate?: () => void
-  onExpand?: () => void
-  onExport?: () => void
-  onLike?: () => void
-  onDislike?: () => void
+  onToggleExpand?: () => void
 }
+
+type Feedback = 'up' | 'down' | null
 
 export function AssistantActions({
   content,
+  expanded = false,
   onCopy,
   onRegenerate,
-  onExpand,
-  onExport,
-  onLike,
-  onDislike,
+  onToggleExpand,
 }: AssistantActionsProps) {
   const [copied, setCopied] = useState(false)
+  const [feedback, setFeedback] = useState<Feedback>(null)
 
   const handleCopy = useCallback(async () => {
     try {
@@ -33,6 +32,23 @@ export function AssistantActions({
       setCopied(false)
     }
   }, [content, onCopy])
+
+  const handleExport = useCallback(() => {
+    const stamp = new Date().toISOString().slice(0, 10)
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `corpus-answer-${stamp}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [content])
+
+  const toggleFeedback = useCallback((value: Feedback) => {
+    setFeedback((prev) => (prev === value ? null : value))
+  }, [])
 
   return (
     <div className="assistant-actions" role="toolbar" aria-label="Message actions">
@@ -49,6 +65,7 @@ export function AssistantActions({
       <button
         className="assistant-actions__btn"
         onClick={onRegenerate}
+        disabled={!onRegenerate}
         aria-label="Regenerate response"
         title="Regenerate"
       >
@@ -58,27 +75,28 @@ export function AssistantActions({
 
       <button
         className="assistant-actions__btn"
-        onClick={onExpand}
-        aria-label="Expand response"
-        title="Expand"
+        onClick={onToggleExpand}
+        aria-label={expanded ? 'Collapse response' : 'Expand response'}
+        title={expanded ? 'Collapse' : 'Expand'}
       >
-        <Maximize2 size={14} />
-        <span className="assistant-actions__label">Expand</span>
+        {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        <span className="assistant-actions__label">{expanded ? 'Collapse' : 'Expand'}</span>
       </button>
 
       <button
         className="assistant-actions__btn"
-        onClick={onExport}
+        onClick={handleExport}
         aria-label="Export response"
-        title="Export"
+        title="Export as Markdown"
       >
         <Download size={14} />
         <span className="assistant-actions__label">Export</span>
       </button>
 
       <button
-        className="assistant-actions__btn"
-        onClick={onLike}
+        className={`assistant-actions__btn ${feedback === 'up' ? 'assistant-actions__btn--active' : ''}`}
+        onClick={() => toggleFeedback('up')}
+        aria-pressed={feedback === 'up'}
         aria-label="Like response"
         title="Like"
       >
@@ -86,8 +104,9 @@ export function AssistantActions({
       </button>
 
       <button
-        className="assistant-actions__btn"
-        onClick={onDislike}
+        className={`assistant-actions__btn ${feedback === 'down' ? 'assistant-actions__btn--active' : ''}`}
+        onClick={() => toggleFeedback('down')}
+        aria-pressed={feedback === 'down'}
         aria-label="Dislike response"
         title="Dislike"
       >

@@ -1,101 +1,109 @@
 /* CSS Custom Properties / Design Tokens */
-/* Claude-inspired warm palette: ivory backgrounds, beige sidebar, orange/coral accent */
+/* CORPUS premium palette: dark navy sidebar, clean white canvas, refined orange accent */
 :root {
-  /* Primary colors — orange/coral accent */
-  --color-primary-50: #fff5f0;
-  --color-primary-100: #ffe8db;
-  --color-primary-200: #ffc9ab;
-  --color-primary-300: #ffa47a;
-  --color-primary-400: #f2793d;
-  --color-primary-500: #e85d2a;
-  --color-primary-600: #d95722;
-  --color-primary-700: #b8451a;
-  --color-primary-800: #943815;
-  --color-primary-900: #6e2a10;
+  /* Primary colors — refined orange/amber accent */
+  --color-primary-50: #fff8f3;
+  --color-primary-100: #ffedd9;
+  --color-primary-200: #ffd4ad;
+  --color-primary-300: #ffb374;
+  --color-primary-400: #f08c3e;
+  --color-primary-500: #e8774a;
+  --color-primary-600: #d0622e;
+  --color-primary-700: #ae4c22;
+  --color-primary-800: #8d3d1c;
+  --color-primary-900: #693018;
 
-  /* Success colors — soft green */
-  --color-success-50: #f2f9f3;
-  --color-success-100: #daf1dd;
-  --color-success-200: #b4e3bb;
-  --color-success-300: #7fcf89;
-  --color-success-400: #4bb95a;
-  --color-success-500: #2e9e3f;
-  --color-success-600: #228731;
-  --color-success-700: #1c6e28;
-  --color-success-800: #175822;
-  --color-success-900: #12431a;
+  /* Success colors — teal-green */
+  --color-success-50: #f0faf6;
+  --color-success-100: #d1f0e4;
+  --color-success-200: #a3e0cb;
+  --color-success-300: #6bc9ab;
+  --color-success-400: #38b08c;
+  --color-success-500: #1e9472;
+  --color-success-600: #16795e;
+  --color-success-700: #12604c;
+  --color-success-800: #0f4d3e;
+  --color-success-900: #0b3a2e;
 
-  /* Warning colors — warm amber */
-  --color-warning-50: #fef9ec;
-  --color-warning-100: #fcefc6;
-  --color-warning-200: #f9de88;
-  --color-warning-300: #f5c94d;
-  --color-warning-400: #f0b324;
-  --color-warning-500: #d9960f;
-  --color-warning-600: #b8770b;
-  --color-warning-700: #94590a;
-  --color-warning-800: #784609;
-  --color-warning-900: #5e3508;
+  /* Warning colors — amber */
+  --color-warning-50: #fffcf0;
+  --color-warning-100: #fff2cc;
+  --color-warning-200: #ffe08a;
+  --color-warning-300: #ffcb3d;
+  --color-warning-400: #f5b014;
+  --color-warning-500: #d9950a;
+  --color-warning-600: #b07408;
+  --color-warning-700: #8a580a;
+  --color-warning-800: #6e4508;
+  --color-warning-900: #523506;
 
-  /* Error colors — muted red */
-  --color-error-50: #fdf3f3;
-  --color-error-100: #fbe0e0;
-  --color-error-200: #f7c4c4;
-  --color-error-300: #f09a9a;
-  --color-error-400: #e36b6b;
-  --color-error-500: #cf4444;
-  --color-error-600: #b52e2e;
-  --color-error-700: #952323;
-  --color-error-800: #791e1e;
-  --color-error-900: #5f1919;
+  /* Error colors — crimson */
+  --color-error-50: #fef2f2;
+  --color-error-100: #fde4e4;
+  --color-error-200: #fdcdcd;
+  --color-error-300: #f9a8a8;
+  --color-error-400: #f07070;
+  --color-error-500: #e04040;
+  --color-error-600: #c42828;
+  --color-error-700: #9e1c1c;
+  --color-error-800: #7d1818;
+  --color-error-900: #5f1414;
 
-  /* Neutral colors — warm tones */
-  --color-neutral-50: #fbfaf7;
-  --color-neutral-100: #f5f2ed;
-  --color-neutral-200: #e8ded4;
-  --color-neutral-300: #d5cac0;
-  --color-neutral-400: #9b928a;
-  --color-neutral-500: #706a63;
-  --color-neutral-600: #574f48;
-  --color-neutral-700: #3e3832;
-  --color-neutral-800: #2a2520;
-  --color-neutral-900: #1c1814;
+  /* Neutral colors — cool slate */
+  --color-neutral-50: #f8f9fb;
+  --color-neutral-100: #f1f3f6;
+  --color-neutral-200: #e2e5eb;
+  --color-neutral-300: #c9cdd6;
+  --color-neutral-400: #9aa2b2;
+  --color-neutral-500: #6b7588;
+  --color-neutral-600: #515b6e;
+  --color-neutral-700: #3e4759;
+  --color-neutral-800: #2b3344;
+  --color-neutral-900: #1a2234;
 
   /* Semantic surface tokens */
   --color-white: #ffffff;
-  --surface-app: #fbfaf7;
-  --surface-main: #fffdf9;
-  --surface-sidebar: #f8f1ea;
+  --surface-app: #f7f8fa;
+  --surface-main: #ffffff;
+  --surface-sidebar: #0f1923;
   --surface-card: #ffffff;
   --surface-elevated: #ffffff;
-  --surface-hover: #f5f2ed;
-  --surface-active: #fff5f0;
-  --surface-error: #fdf3f3;
-  --border-default: #e8ded4;
-  --border-subtle: #eadfd5;
-  --border-strong: #d5cac0;
-  --border-primary: #ffa47a;
-  --border-success: #b4e3bb;
-  --border-error: #f7c4c4;
+  --surface-hover: #f1f3f6;
+  --surface-active: #e8ecf1;
+  --surface-error: #fef2f2;
+  --border-default: #e2e5eb;
+  --border-subtle: #eceef2;
+  --border-strong: #c9cdd6;
+  --border-primary: #f08c3e;
+  --border-success: #a3e0cb;
+  --border-error: #f9a8a8;
 
   /* Semantic text tokens */
-  --text-primary: #1c1814;
-  --text-secondary: #706a63;
-  --text-muted: #9b928a;
-  --text-accent: #d95722;
-  --text-success: #228731;
-  --text-error: #b52e2e;
-  --text-warning: #b8770b;
+  --text-primary: #1a2234;
+  --text-secondary: #515b6e;
+  --text-muted: #9aa2b2;
+  --text-accent: #d0622e;
+  --text-success: #16795e;
+  --text-error: #c42828;
+  --text-warning: #b07408;
   --text-xs: var(--font-size-xs);
   --text-sm: var(--font-size-sm);
+
+  /* Sidebar-specific text tokens */
+  --text-sidebar-primary: #f1f3f6;
+  --text-sidebar-secondary: #8892a4;
+  --text-sidebar-muted: #556175;
+  --surface-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --surface-sidebar-active: rgba(255, 255, 255, 0.1);
+  --border-sidebar: rgba(255, 255, 255, 0.08);
 
   /* Semantic color tokens */
   --color-blue: #4d8ae0;
   --color-purple: #8b5ec0;
-  --color-red: #cf4444;
-  --color-success: #2e9e3f;
-  --color-error: #cf4444;
-  --color-warning: #d9960f;
+  --color-red: #e04040;
+  --color-success: #1e9472;
+  --color-error: #e04040;
+  --color-warning: #d9950a;
 
   /* Typography */
   --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -147,14 +155,14 @@
   --radius-2xl: 1.25rem;
   --radius-full: 9999px;
 
-  /* Shadows — warm-tinted */
-  --shadow-sm: 0 1px 2px 0 rgba(28, 24, 20, 0.04);
-  --shadow: 0 1px 3px 0 rgba(28, 24, 20, 0.06), 0 1px 2px 0 rgba(28, 24, 20, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(28, 24, 20, 0.06), 0 2px 4px -2px rgba(28, 24, 20, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(28, 24, 20, 0.07), 0 4px 6px -4px rgba(28, 24, 20, 0.04);
-  --shadow-xl: 0 20px 25px -5px rgba(28, 24, 20, 0.08), 0 8px 10px -6px rgba(28, 24, 20, 0.03);
-  --shadow-input: 0 1px 2px rgba(28, 24, 20, 0.05), 0 0 0 1px rgba(232, 222, 212, 0.5);
-  --shadow-card: 0 1px 3px rgba(28, 24, 20, 0.04), 0 1px 2px rgba(28, 24, 20, 0.02);
+  /* Shadows — cool neutral */
+  --shadow-sm: 0 1px 2px 0 rgba(26, 34, 52, 0.04);
+  --shadow: 0 1px 3px 0 rgba(26, 34, 52, 0.06), 0 1px 2px 0 rgba(26, 34, 52, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(26, 34, 52, 0.06), 0 2px 4px -2px rgba(26, 34, 52, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(26, 34, 52, 0.07), 0 4px 6px -4px rgba(26, 34, 52, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(26, 34, 52, 0.08), 0 8px 10px -6px rgba(26, 34, 52, 0.03);
+  --shadow-input: 0 1px 2px rgba(26, 34, 52, 0.05), 0 0 0 1px rgba(226, 229, 235, 0.5);
+  --shadow-card: 0 1px 3px rgba(26, 34, 52, 0.04), 0 1px 2px rgba(26, 34, 52, 0.02);
 
   /* Z-index */
   --z-index-dropdown: 1000;

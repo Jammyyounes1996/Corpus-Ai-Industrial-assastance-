@@ -1,6 +1,7 @@
 import uuid
 import json
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import delete, func, select
 from sqlalchemy import delete as sa_delete
@@ -11,6 +12,17 @@ from loguru import logger
 from backend.database.models import Chat, File, Message, OCRResult, Transcript, EvaluationResult
 
 
+IMAGE_FILE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+
+
+def is_image_file(file: File) -> bool:
+    """Return True when stored File metadata identifies an image attachment."""
+    file_type = (file.file_type or "").lower()
+    if file_type.startswith("image"):
+        return True
+    return Path(file.original_name or "").suffix.lower() in IMAGE_FILE_EXTENSIONS
+
+
 async def create_file(
     session: AsyncSession,
     *,
@@ -19,7 +31,11 @@ async def create_file(
     disk_path: str,
     size_bytes: int,
     groundx_id: str | None = None,
+    groundx_process_id: str | None = None,
+    groundx_document_id: str | None = None,
+    groundx_bucket_id: str | None = None,
     qdrant_collection: str | None = None,
+    status_message: str | None = None,
 ) -> File:
     """Create a new file record in the database.
 
@@ -38,8 +54,12 @@ async def create_file(
         disk_path=disk_path,
         size_bytes=size_bytes,
         groundx_id=groundx_id,
+        groundx_process_id=groundx_process_id,
+        groundx_document_id=groundx_document_id,
+        groundx_bucket_id=groundx_bucket_id,
         qdrant_collection=qdrant_collection,
         indexing_status="pending",
+        status_message=status_message,
     )
     session.add(file)
     await session.flush()
@@ -106,11 +126,15 @@ async def update_file_indexing_status(
     *,
     status: str,
     groundx_id: str | None = None,
+    groundx_process_id: str | None = None,
+    groundx_document_id: str | None = None,
+    groundx_bucket_id: str | None = None,
+    status_message: str | None = None,
     error_message: str | None = None,
 ) -> File | None:
     """Update the indexing status of a file.
 
-    Valid statuses: pending, processing, indexed, failed.
+    Valid statuses: pending, queued, processing, indexed, failed.
     """
     file = await get_file(session, file_id)
     if file is None:
@@ -119,11 +143,36 @@ async def update_file_indexing_status(
     file.indexing_status = status
     if groundx_id is not None:
         file.groundx_id = groundx_id
+    if groundx_process_id is not None:
+        file.groundx_process_id = groundx_process_id
+    if groundx_document_id is not None:
+        file.groundx_document_id = groundx_document_id
+    if groundx_bucket_id is not None:
+        file.groundx_bucket_id = groundx_bucket_id
+    if status_message is not None:
+        file.status_message = status_message
     if error_message is not None:
         file.error_message = error_message
 
     await session.flush()
     return file
+
+
+async def count_groundx_files_by_status(
+    session: AsyncSession,
+    *,
+    bucket_id: str,
+    statuses: list[str],
+) -> int:
+    result = await session.execute(
+        select(func.count())
+        .select_from(File)
+        .where(
+            File.groundx_bucket_id == bucket_id,
+            File.indexing_status.in_(statuses),
+        )
+    )
+    return int(result.scalar() or 0)
 
 
 async def delete_file(session: AsyncSession, file_id: str) -> bool:

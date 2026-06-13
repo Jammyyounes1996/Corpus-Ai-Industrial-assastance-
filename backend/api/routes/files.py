@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import mimetypes
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
@@ -9,9 +10,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database import crud
 from backend.database.database import get_session
+from backend.core.ingestion.pdf_ingestor import pdf_ingestor
 from backend.schemas.ingest import ErrorResponse
 
 router = APIRouter(prefix="/api/files", tags=["files"])
+
+
+def _serialize_file(file) -> dict:
+    data = {
+        "id": file.id,
+        "original_name": file.original_name,
+        "file_type": file.file_type,
+        "size_bytes": file.size_bytes,
+        "indexing_status": file.indexing_status,
+        "status_message": file.status_message,
+        "error_message": file.error_message,
+        "groundx_process_id": file.groundx_process_id,
+        "groundx_document_id": file.groundx_document_id,
+        "groundx_bucket_id": file.groundx_bucket_id,
+        "ready_for_groundx_retrieval": file.indexing_status == "indexed",
+        "created_at": file.created_at.isoformat() if file.created_at else None,
+    }
+
+    if file.transcript:
+        data["transcript_summary"] = {
+            "duration_seconds": file.transcript.duration_seconds,
+            "language": file.transcript.language,
+            "text": file.transcript.transcript_text,
+        }
+
+    if file.ocr_result:
+        text = file.ocr_result.extracted_text
+        data["ocr_summary"] = {
+            "text_preview": text[:200] if text else "",
+            "model_used": file.ocr_result.model_used,
+        }
+
+    return data
 
 
 @router.get("")
@@ -50,31 +85,7 @@ async def list_files(
 
     files_data = []
     for file in files:
-        data = {
-            "id": file.id,
-            "original_name": file.original_name,
-            "file_type": file.file_type,
-            "size_bytes": file.size_bytes,
-            "indexing_status": file.indexing_status,
-            "error_message": file.error_message,
-            "created_at": file.created_at.isoformat() if file.created_at else None,
-        }
-
-        if file.transcript:
-            data["transcript_summary"] = {
-                "duration_seconds": file.transcript.duration_seconds,
-                "language": file.transcript.language,
-                "text": file.transcript.transcript_text,
-            }
-
-        if file.ocr_result:
-            text = file.ocr_result.extracted_text
-            data["ocr_summary"] = {
-                "text_preview": text[:200] if text else "",
-                "model_used": file.ocr_result.model_used,
-            }
-
-        files_data.append(data)
+        files_data.append(_serialize_file(file))
 
     return {
         "files": files_data,
@@ -82,6 +93,41 @@ async def list_files(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/{file_id}/status")
+async def get_file_status(
+    file_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    db_file = await crud.get_file(session, file_id)
+    if db_file is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "NotFound", "message": f"File not found: {file_id}"},
+        )
+
+    if db_file.file_type != "pdf":
+        payload = _serialize_file(db_file)
+        payload["file_id"] = db_file.id
+        payload.setdefault("mime_type", None)
+        return payload
+
+    try:
+        status_payload = await pdf_ingestor.refresh_groundx_status(session, file_id)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={"error": "GroundXStatusError", "message": str(exc)},
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "GroundXStatusUnavailable", "message": str(exc)},
+        )
+
+    await session.commit()
+    return status_payload
 
 
 async def _qdrant_collection_exists(collection: str) -> bool:
@@ -233,6 +279,112 @@ async def _delete_qdrant_chunks(file_id: str, collection: str) -> None:
     logger.info("Deleted Qdrant chunks for file {} from {}", file_id, collection)
 
 
+@router.post("/{file_id}/reprocess-ocr")
+async def reprocess_ocr_endpoint(
+    file_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Force OCR reprocess for a single image file.
+
+    Always reads from disk, uses configured OCR model, validates result.
+    Updates existing OCRResult row only if new result is valid.
+    """
+    db_file = await crud.get_file(session, file_id)
+    if db_file is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "NotFound", "message": f"File not found: {file_id}"},
+        )
+
+    if not crud.is_image_file(db_file):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "InvalidType", "message": "File is not an image"},
+        )
+
+    from backend.agent.nodes.ocr import _normalize_ocr_text, _is_bad_ocr, NO_READABLE_TEXT_MESSAGE
+    from backend.core.ingestion.image_processor import image_processor
+
+    disk_path = Path(db_file.disk_path)
+    if not disk_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "NotFound", "message": "Image file not found on disk"},
+        )
+
+    ocr_result = await crud.get_ocr_result_by_file_id(session, file_id)
+    old_text = ocr_result.extracted_text if ocr_result else None
+    old_model = ocr_result.model_used if ocr_result else None
+    old_text_valid = not _is_bad_ocr(_normalize_ocr_text(old_text)) if old_text else False
+
+    image_bytes = disk_path.read_bytes()
+    content_type = (
+        mimetypes.guess_type(db_file.original_name)[0]
+        or mimetypes.guess_type(db_file.disk_path)[0]
+        or "application/octet-stream"
+    )
+    ocr_model = image_processor._settings.OCR_MODEL_NAME
+
+    logger.info(
+        "Manual OCR reprocess file_id={} filename='{}' ocr_model={} "
+        "old_model='{}' old_text_valid={}",
+        file_id, db_file.original_name, ocr_model, old_model, old_text_valid,
+    )
+
+    try:
+        raw_text = await image_processor._extract_text(image_bytes, content_type)
+        normalized = _normalize_ocr_text(raw_text)
+        new_bad = _is_bad_ocr(normalized)
+
+        if new_bad:
+            logger.warning(
+                "Manual OCR reprocess still bad for file_id={} text_preview='{}'",
+                file_id, normalized[:80],
+            )
+            return {
+                "file_id": file_id,
+                "filename": db_file.original_name,
+                "status": "reprocessed_bad",
+                "old_model_used": old_model,
+                "new_model_used": ocr_model,
+                "old_text_preview": (old_text or "")[:200],
+                "new_text_preview": normalized[:200],
+                "text_valid": False,
+                "message": NO_READABLE_TEXT_MESSAGE,
+            }
+
+        if ocr_result is None:
+            await crud.create_ocr_result(
+                session,
+                file_id=file_id,
+                extracted_text=raw_text,
+                model_used=ocr_model,
+            )
+        else:
+            ocr_result.extracted_text = raw_text
+            ocr_result.model_used = ocr_model
+            await session.flush()
+
+        await session.commit()
+
+        return {
+            "file_id": file_id,
+            "filename": db_file.original_name,
+            "status": "reprocessed_ok",
+            "old_model_used": old_model,
+            "new_model_used": ocr_model,
+            "old_text_preview": (old_text or "")[:200],
+            "new_text_preview": raw_text[:200],
+            "text_valid": True,
+        }
+    except Exception as exc:
+        logger.error("Manual OCR reprocess failed for file_id={}: {}", file_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "ReprocessFailed", "message": str(exc)},
+        )
+
+
 @router.get("/{file_id}/content")
 async def get_file_content(
     file_id: str,
@@ -255,5 +407,9 @@ async def get_file_content(
     return FileResponse(
         path=str(disk_path),
         filename=db_file.original_name,
-        media_type="application/octet-stream",
+        media_type=(
+            mimetypes.guess_type(db_file.original_name)[0]
+            or mimetypes.guess_type(str(disk_path))[0]
+            or "application/octet-stream"
+        ),
     )

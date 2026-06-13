@@ -131,16 +131,30 @@ def _build_sources(items: list[dict]) -> list[dict]:
         {
             "source": item.get("source", ""),
             "type": item.get("type", ""),
+            "provider": item.get("provider", item.get("type", "")),
             "score": _get_effective_score(item),
             "file_id": item.get("file_id", ""),
             "file_name": item.get("file_name", "")
             or _extract_filename(item.get("source", "")),
             "file_type": item.get("file_type", "unknown"),
+            "document_id": item.get("document_id", ""),
+            "bucket_id": item.get("bucket_id", ""),
+            "source_url": item.get("source_url", ""),
+            "suggested_text": item.get("suggested_text", ""),
             "chunk_index": item.get("chunk_index", 0),
-            "excerpt": (item.get("content", "") or "")[:200],
+            "excerpt": (item.get("excerpt") or item.get("content", "") or "")[:200],
         }
         for item in items
     ]
+
+
+def _is_ocr_only_request(state: AgentState) -> bool:
+    routes = state.get("routes", []) or []
+    return (
+        state.get("retrieval_provider") == "ocr"
+        or state.get("mode_decision") == "image_attachment_ocr"
+        or ("ocr" in routes and "qdrant" not in routes and "groundx" not in routes)
+    )
 
 
 def _emit_rag_trace(
@@ -234,6 +248,12 @@ async def context_synthesis_node(state: AgentState) -> AgentState:
                 "file_id": item.get("file_id", ""),
                 "file_name": item.get("file_name", ""),
                 "file_type": item.get("file_type", "pdf"),
+                "provider": item.get("provider", "groundx"),
+                "document_id": item.get("document_id", ""),
+                "bucket_id": item.get("bucket_id", ""),
+                "source_url": item.get("source_url", ""),
+                "suggested_text": item.get("suggested_text", ""),
+                "excerpt": item.get("excerpt", ""),
                 "chunk_index": item.get("chunk_index", 0),
                 "type": "groundx",
             }
@@ -271,6 +291,32 @@ async def context_synthesis_node(state: AgentState) -> AgentState:
             for idx, item in enumerate(ocr_results)
         ]
 
+        if _is_ocr_only_request(state) and normalized_ocr:
+            ocr_context = "\n\n".join(
+                item.get("content", "") for item in normalized_ocr if item.get("content")
+            )
+            sources = _build_sources(normalized_ocr)
+            state["prompt_mode"] = "GROUNDED_RAG"
+            state["retrieved_context"] = ocr_context
+            state["context"] = ocr_context
+            state["sources"] = sources
+            state["no_match_message_type"] = ""
+            state["history_text"] = _build_history_text(
+                state.get("history", []) or [],
+                "GROUNDED_RAG",
+                state.get("message_id"),
+            )
+            _emit_rag_trace(
+                state,
+                query_category,
+                "GROUNDED_RAG",
+                len(normalized_ocr),
+                sources,
+                len(ocr_context),
+                filtered_count=None,
+            )
+            return _build_context_return(state)
+
         # ── answer_mode fast-path (before fusion/rerank) ──
         answer_mode = state.get("answer_mode")
         if answer_mode is not None:
@@ -292,12 +338,46 @@ async def context_synthesis_node(state: AgentState) -> AgentState:
                 groundx_items = [
                     item for item in normalized_pdf if _get_effective_score(item) >= 0.60
                 ]
-                if len(groundx_items) >= MIN_RELEVANT_CHUNKS_FOR_GROUNDED:
-                    prompt_mode = "GROUNDED_RAG"
-                    gx_context = "\n\n".join(
-                        item.get("content", "") for item in groundx_items if item.get("content")
+                deduped_groundx_items: list[dict] = []
+                seen_groundx_keys: set[tuple[str, str, str]] = set()
+                for item in groundx_items:
+                    content = str(item.get("content", "") or "").strip()
+                    source_key = str(
+                        item.get("document_id")
+                        or item.get("file_id")
+                        or item.get("source_url")
+                        or item.get("source")
+                        or item.get("file_name")
+                        or ""
                     )
-                    sources = _build_sources(groundx_items)
+                    chunk_key = str(item.get("chunk_index", ""))
+                    dedupe_key = (source_key, chunk_key, content)
+                    if dedupe_key in seen_groundx_keys:
+                        continue
+                    seen_groundx_keys.add(dedupe_key)
+                    compact_item = dict(item)
+                    if content:
+                        compact_item["content"] = content[:1200]
+                    deduped_groundx_items.append(compact_item)
+                    if len(deduped_groundx_items) >= 5:
+                        break
+                groundx_search_text = state.get("groundx_search_text", "") or ""
+                state["groundx_retrieved_count_before_dedupe"] = len(groundx_items)
+                state["groundx_retrieved_count_after_dedupe"] = len(deduped_groundx_items)
+                if deduped_groundx_items or groundx_search_text:
+                    prompt_mode = "GROUNDED_RAG"
+                    compact_sections = []
+                    for item in deduped_groundx_items:
+                        content = str(item.get("content", "") or "").strip()
+                        if not content:
+                            continue
+                        source_name = item.get("file_name") or item.get("source") or "GroundX document"
+                        compact_sections.append(f"Source: {source_name}\n{content}")
+                    gx_context = "\n\n".join(compact_sections).strip()
+                    if not gx_context and groundx_search_text:
+                        gx_context = groundx_search_text.strip()
+                    gx_context = gx_context[: settings.GROUNDX_CONTEXT_MAX_CHARS]
+                    sources = _build_sources(deduped_groundx_items)
                     state["prompt_mode"] = prompt_mode
                     state["retrieved_context"] = gx_context
                     state["context"] = gx_context

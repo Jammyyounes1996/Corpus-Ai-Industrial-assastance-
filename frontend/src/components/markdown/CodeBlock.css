@@ -3,7 +3,7 @@
 .code-block {
   margin: var(--spacing-sm) 0;
   border-radius: var(--radius-lg);
-  background: #1c1814;
+  background: #1a2234;
   overflow: hidden;
   border: 1px solid var(--border-default);
 }
@@ -56,7 +56,7 @@
   margin: 0;
   padding: var(--spacing-md);
   background: transparent;
-  color: #e5e1dc;
+  color: #e2e5eb;
   overflow-x: auto;
   font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);

@@ -37,6 +37,12 @@ describe('useChatStream', () => {
     })
     expect(id).toBe('chat-1')
     expect(calls).toEqual(['create', 'stream'])
+    expect(streamChatMock).toHaveBeenCalledWith(
+      'chat-1',
+      expect.objectContaining({ query: 'hello', attached_files: ['f1'] }),
+      expect.any(Function),
+      expect.any(Object),
+    )
   })
 
   it('handles failure and enables retry before token', async () => {
@@ -49,5 +55,23 @@ describe('useChatStream', () => {
     })
     expect(state!.error).toBe('drop')
     expect(state!.canRetry).toBe(true)
+  })
+
+  it('forwards explicit GroundX mode without selected scope', async () => {
+    createBackendChatMock.mockResolvedValue({ id: 'chat-3' })
+    streamChatMock.mockResolvedValue(undefined)
+    let state: UseChatStreamReturn | null = null
+    renderComponent(<HookProbe onValue={(v) => { state = v }} onEvent={() => undefined} />)
+
+    await act(async () => {
+      await state!.send(null, { query: 'search bucket', answer_mode: 'groundx' })
+    })
+
+    expect(streamChatMock).toHaveBeenCalledWith(
+      'chat-3',
+      expect.objectContaining({ query: 'search bucket', answer_mode: 'groundx' }),
+      expect.any(Function),
+      expect.any(Object),
+    )
   })
 })

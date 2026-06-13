@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { getUploadEndpoint, uploadFile, uploadFiles } from './fileUploadService'
+import { getUploadEndpoint, uploadFile, uploadFiles, uploadFileWithProgress } from './fileUploadService'
 
 describe('fileUploadService', () => {
   it('maps supported mime types to endpoints', () => {
@@ -54,5 +54,44 @@ describe('fileUploadService', () => {
     expect(result.successes).toHaveLength(1)
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0].file.name).toBe('b.pdf')
+  })
+
+  it('preserves GroundX lifecycle metadata in XHR upload responses', async () => {
+    class MockXMLHttpRequest {
+      status = 200
+      responseText = JSON.stringify({
+        file_id: 'pdf-1',
+        filename: 'manual.pdf',
+        file_type: 'pdf',
+        size: 12,
+        upload_timestamp: '2026-01-01T00:00:00.000Z',
+        indexing_status: 'queued',
+        status_message: 'Queued for GroundX indexing',
+        groundx_process_id: 'proc-1',
+        groundx_bucket_id: '28306',
+      })
+      upload = { onprogress: null as ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null }
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+
+      open() {}
+
+      send() {
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 5, total: 10 })
+        this.onload?.()
+      }
+    }
+
+    vi.stubGlobal('XMLHttpRequest', MockXMLHttpRequest)
+    const progress = vi.fn()
+
+    const file = new File(['abc'], 'manual.pdf', { type: 'application/pdf' })
+    const result = await uploadFileWithProgress(file, progress)
+
+    expect(progress).toHaveBeenCalledWith(50)
+    expect(result.indexing_status).toBe('queued')
+    expect(result.status_message).toBe('Queued for GroundX indexing')
+    expect(result.groundx_process_id).toBe('proc-1')
+    expect(result.groundx_bucket_id).toBe('28306')
   })
 })

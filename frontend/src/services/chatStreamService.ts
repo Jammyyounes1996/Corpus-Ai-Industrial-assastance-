@@ -46,7 +46,8 @@ export async function streamChat(
         attached_files: request.attached_files,
         model: request.model,
         provider: request.provider,
-        answer_mode: request.answer_mode
+        answer_mode: request.answer_mode,
+        task_type: request.task_type
       }),
       signal: options.signal
     })
@@ -131,7 +132,8 @@ export async function createBackendChat(request: StreamRequestBody): Promise<Cre
       attached_files: request.attached_files,
       model: request.model,
       provider: request.provider,
-      answer_mode: request.answer_mode
+      answer_mode: request.answer_mode,
+      task_type: request.task_type
     })
   })
 

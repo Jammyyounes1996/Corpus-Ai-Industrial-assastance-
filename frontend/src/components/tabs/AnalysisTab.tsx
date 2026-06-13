@@ -104,7 +104,11 @@ export function AnalysisTab({ activeSession }: AnalysisTabProps) {
     )
   }
 
-  if (error) {
+  const lastSessionAssistantMsg = [...activeSession.messages]
+    .reverse()
+    .find(m => m.role === 'assistant')
+
+  if (error && !lastSessionAssistantMsg) {
     return (
       <div className="analysis-tab analysis-tab--error">
         <AlertCircle size={24} />
@@ -114,17 +118,14 @@ export function AnalysisTab({ activeSession }: AnalysisTabProps) {
     )
   }
 
-  if (!chatData) return null
+  if (!chatData && !lastSessionAssistantMsg) return null
 
-  const lastAssistantMsg = [...chatData.messages]
+  const lastAssistantMsg = chatData ? [...chatData.messages]
     .reverse()
-    .find(m => m.role === 'assistant')
-  const lastSessionAssistantMsg = [...activeSession.messages]
-    .reverse()
-    .find(m => m.role === 'assistant')
+    .find(m => m.role === 'assistant') : null
   const usage = lastSessionAssistantMsg?.usage
 
-  if (!lastAssistantMsg) {
+  if (!lastAssistantMsg && !lastSessionAssistantMsg) {
     return (
       <div className="analysis-tab analysis-tab--empty">
         <div className="analysis-tab__empty-icon">
@@ -138,20 +139,21 @@ export function AnalysisTab({ activeSession }: AnalysisTabProps) {
 
   let thinkingSteps: ThinkingStepRaw[] = []
   try {
-    thinkingSteps = lastAssistantMsg.thinking_steps
+    thinkingSteps = lastAssistantMsg?.thinking_steps
       ? JSON.parse(lastAssistantMsg.thinking_steps)
       : []
   } catch { thinkingSteps = [] }
 
   let retrievedContext: RetrievedContextRaw[] = []
   try {
-    retrievedContext = lastAssistantMsg.retrieved_context
+    retrievedContext = lastAssistantMsg?.retrieved_context
       ? JSON.parse(lastAssistantMsg.retrieved_context)
       : []
   } catch { retrievedContext = [] }
 
-  const modelName = chatData.model_name || 'Unknown'
+  const modelName = chatData?.model_name || 'Unknown'
   const modelDisplay = modelName.includes('/') ? modelName.split('/').pop()! : modelName
+  const assistantContent = lastAssistantMsg?.content ?? lastSessionAssistantMsg?.content ?? ''
 
   return (
     <div className="analysis-tab">
@@ -253,7 +255,7 @@ export function AnalysisTab({ activeSession }: AnalysisTabProps) {
             <span className="analysis-reasoning__stat">Generation time: {usage ? `${usage.generation_time_ms}ms` : '—'}</span>
           </div>
           <div className="analysis-reasoning">
-            <pre className="analysis-reasoning__text">{lastAssistantMsg.content}</pre>
+            <pre className="analysis-reasoning__text">{assistantContent}</pre>
           </div>
         </section>
 

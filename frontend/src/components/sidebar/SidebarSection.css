@@ -1,5 +1,3 @@
-/* Sidebar Section Styles */
-
 .sidebar-section {
   margin-bottom: var(--spacing-md);
 }
@@ -11,7 +9,7 @@
 .sidebar-section-title {
   font-size: 10px;
   font-weight: var(--font-weight-semibold);
-  color: var(--color-neutral-400);
+  color: var(--text-sidebar-muted);
   margin-bottom: var(--spacing-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -24,13 +22,12 @@
   gap: 1px;
 }
 
-/* Placeholder items for static sections */
 .placeholder-item {
   display: flex;
   align-items: center;
   padding: 5px var(--spacing-sm);
   border-radius: var(--radius-md);
-  color: var(--color-neutral-400);
+  color: var(--text-sidebar-muted);
   cursor: default;
   transition: all var(--transition-fast);
   font-size: var(--font-size-xs);
@@ -38,8 +35,8 @@
 }
 
 .placeholder-item:hover {
-  background-color: rgba(232, 222, 212, 0.35);
-  color: var(--text-primary);
+  background-color: var(--surface-sidebar-hover);
+  color: var(--text-sidebar-primary);
 }
 
 .placeholder-item::before {
@@ -47,6 +44,6 @@
   width: 6px;
   height: 6px;
   border-radius: var(--radius-full);
-  background-color: var(--color-neutral-300);
+  background-color: rgba(255, 255, 255, 0.15);
   flex-shrink: 0;
 }

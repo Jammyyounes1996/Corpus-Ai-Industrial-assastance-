@@ -31,7 +31,54 @@ function PlainFallback({ content }: { content: string }) {
   return <div className="md-renderer__fallback">{content}</div>
 }
 
+function getPlainText(node: ReactNode): string | null {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node)
+  }
+
+  if (Array.isArray(node)) {
+    const parts: string[] = []
+    for (const child of node) {
+      const text = getPlainText(child)
+      if (text === null) {
+        return null
+      }
+      parts.push(text)
+    }
+    return parts.join('')
+  }
+
+  return null
+}
+
+function isLabelHeading(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized || normalized.includes('\n')) {
+    return false
+  }
+
+  const wordCount = normalized.split(/\s+/).length
+  if (wordCount > 7 || normalized.length > 80) {
+    return false
+  }
+
+  return /[:：]$|[؟?]$/.test(normalized)
+}
+
 const components: Components = {
+  p({ children }) {
+    const plainText = getPlainText(children)
+
+    if (plainText && isLabelHeading(plainText)) {
+      return (
+        <p className="md-renderer__label-heading">
+          <strong>{children}</strong>
+        </p>
+      )
+    }
+
+    return <p>{children}</p>
+  },
   code({ className, children, ...rest }) {
     const codeString = String(children).replace(/\n$/, '')
     const match = /language-(\w+)/.exec(className || '')

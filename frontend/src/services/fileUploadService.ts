@@ -12,6 +12,10 @@ import {
   FrontendError
 } from '../types/errors'
 
+function getUploadErrorMessage(errorData: UploadErrorResponse & { detail?: { message?: string } }): string {
+  return errorData.detail?.message || errorData.error || 'Upload failed'
+}
+
 // Endpoint mapping by MIME type
 const ENDPOINTS: Record<string, string> = {
   'application/pdf': config.chatEndpoints.ingestPdf,
@@ -20,8 +24,14 @@ const ENDPOINTS: Record<string, string> = {
   'image/png': config.chatEndpoints.ingestImage,
   'image/webp': config.chatEndpoints.ingestImage,
   'audio/mpeg': config.chatEndpoints.ingestAudio,
+  'audio/mp3': config.chatEndpoints.ingestAudio,
+  'audio/mp4': config.chatEndpoints.ingestAudio,
+  'audio/m4a': config.chatEndpoints.ingestAudio,
+  'audio/x-m4a': config.chatEndpoints.ingestAudio,
   'audio/wav': config.chatEndpoints.ingestAudio,
-  'audio/ogg': config.chatEndpoints.ingestAudio
+  'audio/ogg': config.chatEndpoints.ingestAudio,
+  'audio/webm': config.chatEndpoints.ingestAudio,
+  'video/mp4': config.chatEndpoints.ingestAudio
 }
 
 // Check if MIME type is supported
@@ -63,7 +73,7 @@ export function validateFileForUpload(file: File): ValidationError | null {
 // Upload a single file
 export async function uploadFile(file: File): Promise<UploadedAttachmentReference> {
   const endpoint = getUploadEndpointByFile(file)
-  
+
   if (!endpoint) {
     const frontendError = normalizeError(new Error(`Unsupported file type: ${file.type}`))
     throw frontendError
@@ -80,13 +90,13 @@ export async function uploadFile(file: File): Promise<UploadedAttachmentReferenc
 
     if (!response.ok) {
       const errorData: UploadErrorResponse = await response.json()
-      const error = new Error(errorData.error || `Upload failed with status ${response.status}`)
+      const error = new Error(getUploadErrorMessage(errorData))
       const frontendError = normalizeError(error)
       throw frontendError
     }
 
     const result: UploadResponse = await response.json()
-    
+
     return {
       file_id: result.file_id,
       filename: result.filename,
@@ -97,6 +107,80 @@ export async function uploadFile(file: File): Promise<UploadedAttachmentReferenc
   } catch (error) {
     throw normalizeError(error)
   }
+}
+
+export type ProgressCallback = (percent: number) => void
+
+export interface UploadProgressResult extends UploadedAttachmentReference {
+  indexing_status?: string
+  status_message?: string | null
+  groundx_process_id?: string | null
+  groundx_bucket_id?: string | null
+}
+
+export function uploadFileToEndpoint(
+  file: File,
+  endpoint: string,
+  onProgress: ProgressCallback
+): Promise<UploadProgressResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', endpoint)
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const result: UploadResponse = JSON.parse(xhr.responseText)
+          resolve({
+            file_id: result.file_id,
+            filename: result.filename,
+            file_type: result.file_type,
+            size: result.size,
+            upload_timestamp: new Date(result.upload_timestamp),
+            indexing_status: (result as UploadResponse & { indexing_status?: string }).indexing_status,
+            status_message: (result as UploadResponse & { status_message?: string | null }).status_message,
+            groundx_process_id: (result as UploadResponse & { groundx_process_id?: string | null }).groundx_process_id,
+            groundx_bucket_id: (result as UploadResponse & { groundx_bucket_id?: string | null }).groundx_bucket_id,
+          })
+        } catch {
+          reject(normalizeError(new Error('Invalid response from server')))
+        }
+      } else {
+        try {
+          const errorData: UploadErrorResponse & { detail?: { message?: string } } = JSON.parse(xhr.responseText)
+          reject(normalizeError(new Error(getUploadErrorMessage(errorData))))
+        } catch {
+          reject(normalizeError(new Error(`Upload failed with status ${xhr.status}`)))
+        }
+      }
+    }
+
+    xhr.onerror = () => reject(normalizeError(new Error('Network error during upload')))
+    xhr.send(formData)
+  })
+}
+
+// Upload a single file with progress tracking via XHR
+export function uploadFileWithProgress(
+  file: File,
+  onProgress: ProgressCallback
+): Promise<UploadProgressResult> {
+  const endpoint = getUploadEndpointByFile(file)
+
+  if (!endpoint) {
+    return Promise.reject(normalizeError(new Error(`Unsupported file type: ${file.type}`)))
+  }
+
+  return uploadFileToEndpoint(file, endpoint, onProgress)
 }
 
 // Upload multiple files with individual error handling

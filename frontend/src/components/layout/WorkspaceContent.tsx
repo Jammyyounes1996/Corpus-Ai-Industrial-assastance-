@@ -18,7 +18,7 @@ export function WorkspaceContent({ activeTab, activeSession, sessions, onTabChan
     case 'chat':
       return (
         <main className="workspace-content">
-          <ChatWorkspace session={activeSession} sessions={sessions} />
+          <ChatWorkspace session={activeSession} sessions={sessions} onTabChange={onTabChange} />
         </main>
       )
     case 'documents':

@@ -1,9 +1,17 @@
-import { WorkspaceTabs } from '../tabs/WorkspaceTabs'
-import { useState } from 'react'
 import { useConnectionStatus } from '../../hooks/useConnectionStatus'
 import { ConnectionStatusBadge } from '../status/ConnectionStatusBadge'
 import { ConnectionStatusMenu } from '../status/ConnectionStatusMenu'
+import { ArrowLeft } from 'lucide-react'
+import { useState } from 'react'
 import './WorkspaceHeader.css'
+
+const TAB_TITLES: Record<string, string> = {
+  chat: 'Chat',
+  documents: 'Documents',
+  ocr: 'OCR',
+  analysis: 'Analysis',
+  tools: 'Tools',
+}
 
 interface WorkspaceHeaderProps {
   activeTab: string
@@ -17,12 +25,22 @@ export function WorkspaceHeader({ activeTab, onTabChange }: WorkspaceHeaderProps
   return (
     <header className="workspace-header">
       <div className="workspace-header-left">
-        <WorkspaceTabs 
-          activeTab={activeTab}
-          onTabChange={onTabChange}
-        />
+        {activeTab !== 'chat' && (
+          <button
+            type="button"
+            className="workspace-header__back"
+            onClick={() => onTabChange('chat')}
+            aria-label="Back to Chat"
+          >
+            <ArrowLeft size={16} />
+            <span>Back to Chat</span>
+          </button>
+        )}
+        <h1 className="workspace-header__title">
+          {TAB_TITLES[activeTab] ?? 'Chat'}
+        </h1>
       </div>
-      
+
       <div className="workspace-header-right">
         <div className="workspace-status" onKeyDown={(event) => {
           if (event.key === 'Escape') {

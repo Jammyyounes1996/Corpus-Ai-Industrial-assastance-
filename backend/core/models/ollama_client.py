@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncGenerator
 
 import httpx
@@ -19,7 +20,8 @@ class OllamaClient:
         model: str | None = None,
         system: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int | None = None,
+        num_ctx: int | None = None,
     ) -> str:
         """Generate a completion from the LLM.
 
@@ -37,12 +39,15 @@ class OllamaClient:
             httpx.HTTPError: If the request fails.
         """
         model = model or self._settings.OLLAMA_MODEL
+        max_tokens = max_tokens or self._settings.DEFAULT_NUM_PREDICT
+        num_ctx = num_ctx or self._settings.DEFAULT_NUM_CTX
         payload: dict = {
             "model": model,
             "prompt": prompt,
             "stream": False,
             "options": {
                 "temperature": temperature,
+                "num_ctx": num_ctx,
                 "num_predict": max_tokens,
             },
         }
@@ -64,7 +69,8 @@ class OllamaClient:
         model: str | None = None,
         system: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int | None = None,
+        num_ctx: int | None = None,
     ) -> AsyncGenerator[str | dict, None]:
         """Stream tokens from the LLM.
 
@@ -81,12 +87,15 @@ class OllamaClient:
             eval_count, prompt_eval_count, total_duration, etc.
         """
         model = model or self._settings.OLLAMA_MODEL
+        max_tokens = max_tokens or self._settings.DEFAULT_NUM_PREDICT
+        num_ctx = num_ctx or self._settings.DEFAULT_NUM_CTX
         payload: dict = {
             "model": model,
             "prompt": prompt,
             "stream": True,
             "options": {
                 "temperature": temperature,
+                "num_ctx": num_ctx,
                 "num_predict": max_tokens,
             },
         }
@@ -103,7 +112,6 @@ class OllamaClient:
                 async for line in response.aiter_lines():
                     if not line.strip():
                         continue
-                    import json
                     try:
                         chunk = json.loads(line)
                         token = chunk.get("response", "")
@@ -114,10 +122,73 @@ class OllamaClient:
                                 "eval_count": chunk.get("eval_count"),
                                 "prompt_eval_count": chunk.get("prompt_eval_count"),
                                 "total_duration": chunk.get("total_duration"),
+                                "done_reason": chunk.get("done_reason"),
                             }
                             break
                     except json.JSONDecodeError:
                         continue
+
+    async def chat_stream(
+        self,
+        prompt: str,
+        model: str | None = None,
+        system: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        num_ctx: int | None = None,
+        think: bool = True,
+    ) -> AsyncGenerator[dict[str, str | int | bool | None], None]:
+        """Stream chat chunks, including provider-visible thinking when available."""
+        model = model or self._settings.OLLAMA_MODEL
+        max_tokens = max_tokens or self._settings.DEFAULT_NUM_PREDICT
+        num_ctx = num_ctx or self._settings.DEFAULT_NUM_CTX
+        messages: list[dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        payload: dict = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "think": think,
+            "options": {
+                "temperature": temperature,
+                "num_ctx": num_ctx,
+                "num_predict": max_tokens,
+            },
+        }
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream(
+                "POST",
+                f"{self._base_url}/api/chat",
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    message = chunk.get("message") or {}
+                    thinking = message.get("thinking", "")
+                    content = message.get("content", "")
+                    if thinking:
+                        yield {"thinking": thinking}
+                    if content:
+                        yield {"content": content}
+                    if chunk.get("done", False):
+                        yield {
+                            "done": True,
+                            "eval_count": chunk.get("eval_count"),
+                            "prompt_eval_count": chunk.get("prompt_eval_count"),
+                            "total_duration": chunk.get("total_duration"),
+                            "done_reason": chunk.get("done_reason"),
+                        }
+                        break
 
     async def embed_text(
         self,
